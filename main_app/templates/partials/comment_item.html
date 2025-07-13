@@ -1,0 +1,39 @@
+<div class="comment mb-3" id="comment-{{ comment.id }}">
+    <div class="card">
+        <div class="card-body">
+            <div class="d-flex justify-content-between">
+                <h6 class="card-subtitle mb-2 text-muted">{{ comment.user.username }}</h6>
+                <small class="text-muted">{{ comment.created_at }}</small>
+            </div>
+            <p class="card-text">{{ comment.content }}</p>
+            
+            <div class="d-flex align-items-center">
+                <button class="btn btn-sm btn-outline-primary like-btn" data-comment-id="{{ comment.id }}">
+                    <span class="like-count">{{ comment.like_count }}</span> 
+                    <i class="far fa-thumbs-up"></i>
+                </button>
+                
+                <button class="btn btn-sm btn-outline-secondary ms-2 reply-btn" data-comment-id="{{ comment.id }}">
+                    Reply
+                </button>
+            </div>
+            
+            <div class="reply-form mt-3" id="reply-form-{{ comment.id }}" style="display: none;">
+                {% if user.is_authenticated %}
+                <form class="reply-form-inner">
+                    {% csrf_token %}
+                    <input type="hidden" name="parent_id" value="{{ comment.id }}">
+                    {{ reply_form.content }}
+                    <button type="submit" class="btn btn-primary btn-sm mt-2">Post Reply</button>
+                </form>
+                {% endif %}
+            </div>
+            
+            <div class="replies mt-3 ms-4">
+                {% for reply in comment.replies.all %}
+                    {% include 'partials/reply_item.html' with reply=reply %}
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+</div>

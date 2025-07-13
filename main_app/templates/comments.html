@@ -1,0 +1,27 @@
+
+
+<div class="comments-section">
+    <h4>Comments ({{ comments.count }})</h4>
+    
+    {% if not user.is_authenticated %}
+    <div class="guest-comment-form">
+        <form id="comment-form">
+            {% csrf_token %}
+            <input type="text" name="guest_name" placeholder="Your name" required>
+            <input type="email" name="guest_email" placeholder="Email (optional)">
+            {{ comment_form.content }}
+            <button type="submit" class="btn btn-primary">Post Comment</button>
+        </form>
+    </div>
+    {% else %}
+    <p class="alert alert-info">Please <a href="{% url 'login' %}">login</a> to comment</p>
+    {% endif %}
+    
+    <div id="comments-list">
+        {% for comment in comments %}
+            {% include 'partials/comment_item.html' with comment=comment %}
+        {% empty %}
+            <p class="text-muted">No comments yet. Be the first to comment!</p>
+        {% endfor %}
+    </div>
+</div>

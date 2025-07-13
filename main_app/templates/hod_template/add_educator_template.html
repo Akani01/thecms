@@ -1,0 +1,45 @@
+{% extends 'main_app/base.html' %}
+{% load static %}
+{% load crispy_forms_tags %}  {# REQUIRED for crispy forms #}
+
+{% block page_title %}{{ page_title }}{% endblock page_title %}
+
+{% block custom_css %}
+<style>
+    .invalid {
+        font-style: italic;
+        font-weight: bold;
+        color: red;
+    }
+    .valid {
+        font-style: italic;
+        font-weight: bold;
+        color: green;
+    }
+</style>
+{% endblock custom_css %}
+
+{% block content %}
+<section class="content">
+    <div class="container-fluid">
+        <div class="row">
+            <div class="col-md-12">
+                <div class="card card-dark">
+                    <div class="card-header">
+                        <h3 class="card-title">{{ page_title }}</h3>
+                    </div>
+                    <form method="POST" enctype="multipart/form-data">
+                        {% csrf_token %}
+                        <div class="card-body">
+                            {{ form|crispy }}
+                        </div>
+                        <div class="card-footer">
+                            <button type="submit" class="btn btn-primary">Add Educator</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</section>
+{% endblock content %}

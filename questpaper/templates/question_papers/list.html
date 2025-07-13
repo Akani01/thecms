@@ -1,0 +1,66 @@
+<!-- list.html -->
+{% extends 'main_app/base.html' %}
+
+{% block content %}
+  <h1>Question Papers</h1>
+
+  <form method="GET">
+    <div class="filters">
+      <!-- Filter by Subject -->
+      <div class="form-group">
+        <label for="subject">Subject</label>
+        <select name="subject" id="subject" class="form-control">
+          <option value="">--Select Subject--</option>
+          {% for subject in subjects %}
+            <option value="{{ subject.id }}" {% if request.GET.subject == subject.id|stringformat:'s' %}selected{% endif %}>{{ subject.name }}</option>
+          {% endfor %}
+        </select>
+      </div>
+
+      <!-- Filter by Grade -->
+      <div class="form-group">
+        <label for="grade">Grade</label>
+        <select name="grade" id="grade" class="form-control">
+          <option value="">--Select Grade--</option>
+          {% for grade in grades %}
+            <option value="{{ grade.id }}" {% if request.GET.grade == grade.id|stringformat:'s' %}selected{% endif %}>{{ grade.name }}</option>
+          {% endfor %}
+        </select>
+      </div>
+
+      <!-- Filter by Term -->
+      <div class="form-group">
+        <label for="term">Term</label>
+        <select name="term" id="term" class="form-control">
+          <option value="">--Select Term--</option>
+          {% for term in terms %}
+            <option value="{{ term.id }}" {% if request.GET.term == term.id|stringformat:'s' %}selected{% endif %}>{{ term.term }}</option>
+          {% endfor %}
+        </select>
+      </div>
+
+      <!-- Filter by School -->
+      <div class="form-group">
+        <label for="school">School</label>
+        <select name="school" id="school" class="form-control">
+          <option value="">--Select School--</option>
+          {% for school in schools %}
+            <option value="{{ school.id }}" {% if request.GET.school == school.id|stringformat:'s' %}selected{% endif %}>{{ school.name }}</option>
+          {% endfor %}
+        </select>
+      </div>
+
+      <button type="submit" class="btn btn-primary mt-3">Apply Filters</button>
+    </div>
+  </form>
+
+  <div class="question-papers-list">
+    {% for paper in question_papers %}
+      <div class="question-paper">
+        <h3>{{ paper.grade.name }} - {{ paper.term.term }} - {{ paper.school.name }} - {{ paper.subject.name }}</h3>
+        <a href="{% url 'question_papers:view' paper.id %}" class="btn btn-info" target="_blank">View Paper</a>
+        <a href="{% url 'question_papers:download' paper.id %}" class="btn btn-success">Download</a>
+      </div>
+    {% endfor %}
+  </div>
+{% endblock %}

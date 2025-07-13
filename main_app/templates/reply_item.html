@@ -1,0 +1,15 @@
+<div class="reply mb-2" id="reply-{{ reply.id }}">
+    <div class="card">
+        <div class="card-body py-2">
+            <div class="d-flex justify-content-between">
+                <h6 class="card-subtitle mb-1 text-muted">{{ reply.user.username }}</h6>
+                <small class="text-muted">{{ reply.created_at }}</small>
+            </div>
+            <p class="card-text mb-1">{{ reply.content }}</p>
+            <button class="btn btn-sm btn-outline-primary like-btn" data-comment-id="{{ reply.id }}">
+                <span class="like-count">{{ reply.like_count }}</span> 
+                <i class="far fa-thumbs-up"></i>
+            </button>
+        </div>
+    </div>
+</div>
