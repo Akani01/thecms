@@ -115,6 +115,13 @@ def index_view(request):
         "news_items": news_items,
         "bursaries": bursaries,
         "colleges": colleges,
+        # Include the message form and messages
+       
+        # Corrected lines
+        "message_form": MessageForm(),
+        "messages": Message.objects.all().order_by('-timestamp'),
+
+        #end
         "question_papers": question_papers,
         "departments": departments,
         "grades": grades,
@@ -159,6 +166,42 @@ def index_view(request):
     }
 
     return render(request, 'landing/home.html', context)
+
+
+#messaging
+def is_ajax_request(self, request):
+        """ Check if the request is an AJAX request by inspecting the headers. """
+        return request.META.get('HTTP_X_REQUESTED_WITH') == 'XMLHttpRequest'
+
+@method_decorator(csrf_exempt)
+def post(self, request, *args, **kwargs):
+    # Check if it's an AJAX request
+    if self.is_ajax_request(request) and request.method == "POST":
+        form = MessageForm(request.POST, request.FILES)
+        if form.is_valid():
+            # Save the message
+            message = form.save(commit=False)
+            message.author = request.user
+            message.save()
+
+            # Save each uploaded file to MessageMedia
+            files = request.FILES.getlist('media_files')
+            for file in files:
+                MessageMedia.objects.create(message=message, media=file)
+
+            # Prepare the response
+            media_urls = [media.media.url for media in message.media.all()]
+            return JsonResponse({
+                'author': message.author.username,
+                'text': message.text,
+                'media_urls': media_urls,
+                'timestamp': message.timestamp.strftime('%Y-%m-%d %H:%M:%S'),
+            })
+
+    return super().get(request, *args, **kwargs)
+
+def external_redirect(request, url):
+    return redirect(url)
 
 # AJAX Handlers
 @require_POST

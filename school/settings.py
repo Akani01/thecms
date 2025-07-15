@@ -65,6 +65,7 @@ INSTALLED_APPS = [
     'main_app.apps.MainAppConfig',
     #aws database
     'storages',
+    
 
     # ... include the providers you want to enable:
     'allauth.socialaccount.providers.google',

@@ -680,3 +680,20 @@ class DeepSeekChatForm(forms.Form):
         }),
         max_length=1000
     )
+
+#messages form
+
+#messages
+class MessageForm(forms.ModelForm):
+    class Meta:
+        model = Message
+        fields = ['text', 'reply_to']  # 'text' for the message, media will be handled separately
+        widgets = {
+            'text': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'Type a message...'}),
+            'reply_to': forms.HiddenInput(),
+        }
+
+    media_files = forms.FileField(
+        widget=forms.ClearableFileInput(attrs={'allow_multiple_selected': True}),
+        required=False
+    )

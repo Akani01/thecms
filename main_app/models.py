@@ -3,6 +3,9 @@ from django.contrib.auth.models import UserManager
 from django.dispatch import receiver
 from django.db.models.signals import post_save
 from django.db import models
+from django.conf import settings
+from django.utils import timezone
+from django.core.validators import FileExtensionValidator
 from datetime import datetime
 from django.contrib.auth.models import AbstractUser
 from django.utils import timezone
@@ -877,3 +880,4 @@ class AIChatLog(models.Model):
     
     def __str__(self):
         return f"{self.get_question_type_display()} - {self.created_at}"
+    

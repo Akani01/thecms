@@ -1257,7 +1257,87 @@
     </div>
   </div>
 </section>
+<!--links of messages-->
 
+<!-- Initialize Bootstrap Carousel -->
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+	var myCarousel = new bootstrap.Carousel(document.getElementById('carouselExampleIndicators'), {
+	interval: 2000,  // Set the interval if you want the carousel to auto-rotate (in milliseconds)
+	// Additional options...
+	});
+});
+</script>
+<!-- Messages Form -->
+<body>
+<!-- Message Form -->
+<form id="messageForm" method="POST" enctype="multipart/form-data">
+	{% csrf_token %}
+	{{ message_form.as_p }}
+	<button type="submit">Send Message</button>
+</form>
+
+<!-- Display Messages -->
+<div id="messagesContainer">
+	{% for message in messages %}
+		<div class="message">
+			<strong>{{ message.author.username }}:</strong> {{ message.text }}<br>
+			<small>{{ message.timestamp }}</small>
+			{% if message.media.all %}
+				<div class="message-media">
+					{% for media in message.media.all %}
+						<a href="{{ media.media.url }}" target="_blank">
+							<img src="{{ media.media.url }}" alt="Message Media" style="max-width: 200px;">
+						</a>
+					{% endfor %}
+				</div>
+			{% endif %}
+		</div>
+	{% endfor %}
+</div>
+
+<!-- JavaScript for AJAX Handling -->
+<script src="https://ajax.googleapis.com/ajax/libs/jquery/3.6.0/jquery.min.js"></script>
+<script type="text/javascript">
+$(document).ready(function() {
+	$('#messageForm').on('submit', function(event) {
+		event.preventDefault();  // Prevent the form from submitting in the traditional way
+
+		$.ajax({
+			url: '',
+			type: 'POST',
+			data: new FormData(this),
+			processData: false,
+			contentType: false,
+			success: function(data) {
+				// Append the new message to the messagesContainer
+				let mediaContent = '';
+				if (data.media_urls.length) {
+					mediaContent = '<div class="message-media">';
+					data.media_urls.forEach(function(url) {
+						mediaContent += `<a href="${url}" target="_blank"><img src="${url}" style="max-width: 365px;"></a>`;
+					});
+					mediaContent += '</div>';
+				}
+				$('#messagesContainer').prepend(`
+					<div class="message">
+						<strong>${data.author}:</strong> ${data.text}<br>
+						<small>${data.timestamp}</small>
+						${mediaContent}
+					</div>
+				`);
+				// Clear the form
+				$('#messageForm')[0].reset();
+			},
+			error: function(xhr, errmsg, err) {
+				console.log('Error: ' + errmsg);
+			}
+		});
+	});
+});
+</script>
+</body>
+<!--end-->
 <!-- =================== BURSARIES SECTION =================== -->
 <section class="my-5">
   <h3 class="mb-3">Available Bursaries</h3>
