@@ -12,7 +12,7 @@
 		<meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
 		
 		<!-- Title -->
-        <title>theCms</title>
+        <title>CMS</title>
 		<link rel="icon" href="{% static 'images/logo.png' %}">
 		
 	<!-- Favicon -->
@@ -98,6 +98,9 @@
 		
 			<!-- External Action Buttons -->
 			<div class="button">
+				<!-- <a href="view_circuit-comin" target="_blank" class="btn">
+					Circuit
+				</a> -->
 				<a href="{% url 'joblistview' %}" target="_blank" class="btn">
 					Apply for Jobs
 				</a>
@@ -385,6 +388,8 @@
 											<!-- Dropdown Menu -->
 											<ul class="dropdown-menu  dropdown-menu-left" id="dropdownMenu">
 												<li><a href="{% url 'index' %}">Home</a></li>
+												<li><a href="{% url 'add_circuit' %}">Add_Circuit</a></li>
+												<li><a href="{% url 'circuit_gallery' %}">Circuit</a></li>
 												<li><a href="{% url 'help' %}">Help</a></li>
 												<li><a href="{% url 'services' %}">Services</a></li>
 												<li><a href="#college-section">College & Universities</a></li>
@@ -392,6 +397,8 @@
 												<li><a href="#school-section">School Dashboard</a></li>
 												<li><a href="{% url 'contact_form' %}">Contact Us</a></li>
 											</ul>
+
+											<!--dropdown for circuit-->
 										</div>
 									</div>
 								</div>

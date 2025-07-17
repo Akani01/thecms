@@ -31,7 +31,7 @@ SECRET_KEY = 'SECRET_KEY'
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 
-ALLOWED_HOSTS = ['vhembe-632b45acc973.herokuapp.com', '127.0.0.1', 'www.thecms.com', 'thecms.com', 'thecms.co.za']
+ALLOWED_HOSTS = ['thecms-f39b5877166c.herokuapp.com/', '127.0.0.1', 'thecms.co.za', 'www.thecms.co.za' 'www.thecms.com', 'thecms.com',]
 
 
 # Application definition
