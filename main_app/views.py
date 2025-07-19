@@ -371,9 +371,11 @@ def circuitGallery(request):
 
 # View a single circuit
 def viewCircuit(request, pk):
+    if not request.user.is_authenticated:
+        return redirect('register_selections')  # use the name of your URL pattern
+
     circuit = get_object_or_404(Circuit, id=pk)
     return render(request, 'circuits/circuit_detail.html', {'circuit': circuit})
-
 
 # Add a new circuit with preview
 def addCircuit(request):
