@@ -372,7 +372,7 @@ def circuitGallery(request):
 # View a single circuit
 def viewCircuit(request, pk):
     if not request.user.is_authenticated:
-        return redirect('register_selections')  # use the name of your URL pattern
+        return redirect('register_selection')  # use the name of your URL pattern
 
     circuit = get_object_or_404(Circuit, id=pk)
     return render(request, 'circuits/circuit_detail.html', {'circuit': circuit})
@@ -1331,10 +1331,14 @@ def viewSos(request, pk):
 #C.Manager
 class CircuitManager(View):
     def get(self, request):
+        # Redirect unauthenticated users
+        if not request.user.is_authenticated:
+            return redirect('register_selection')  # or your login/register page
+
         try:
-            manager = request.user.circuit_manager
+            manager = request.user.circuit_manager  # will only work if user is authenticated
             circuit = manager.circuit
-        except Circuit_Manager.DoesNotExist:
+        except (AttributeError, Circuit_Manager.DoesNotExist):
             return render(request, 'circuit/no_access.html')
 
         context = {
@@ -1342,6 +1346,7 @@ class CircuitManager(View):
         }
         return render(request, 'circuit/circuit_manager.html', context)
     
+
 #contact section
 def contact_list_view(request):
     contacts = Contact.objects.all().order_by('-submitted_at')

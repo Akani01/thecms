@@ -371,7 +371,7 @@ urlpatterns = [
     #circuits
     path('circuit_gallery/', views.circuitGallery, name='circuit_gallery'),
     path('circuit/<int:pk>/', views.viewCircuit, name='view_circuit'),
-    path('add/', views.addCircuit, name='add_circuit'),
+    path('add_circuit/', views.addCircuit, name='add_circuit'),
     path('delete/<int:pk>/', views.deleteCircuit, name='delete_circuit'),
     #coment and reply sections
     path('add-comment/', views.add_comment, name='add_comment'),

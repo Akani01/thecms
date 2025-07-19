@@ -140,11 +140,30 @@
                     <a href="#" class="nav-link">
                         <i class="nav-icon fas fa-book"></i>
                         <p>
-                            School
+                            Circuit & School
                             <i class="fas fa-angle-left right"></i>
                         </p>
                     </a>
                     <ul class="nav nav-treeview">
+                        <li class="nav-item">
+                            <a href="{% url 'add_circuit' %}"
+                            class="nav-link {% if request.path == add_circuit_url %}active{% endif %}">
+                                <i class="far fa-circle nav-icon"></i>
+                                <p>Add Circuit</p>
+                            </a>
+                        </li>
+                        <li class="nav-item">
+                          {% for circuit in circuits %}
+                            {% url 'delete_circuit' circuit.id as delete_circuit_url %}
+                            <li class="nav-item">
+                                <a href="{{ delete_circuit_url }}"
+                                class="nav-link {% if request.path == delete_circuit_url %} active {% endif %}">
+                                    <i class="far fa-circle nav-icon"></i>
+                                    <p>Delete {{ circuit.name }}</p>
+                                </a>
+                            </li>
+                          {% endfor %}
+                        </li>
                         <li class="nav-item">
                             {% url 'add_school' as add_school %}
                             <a href="{{add_school}}"
