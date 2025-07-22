@@ -240,6 +240,17 @@ CRISPY_TEMPLATE_PACK = "bootstrap5"
 LOGIN_REDIRECT_URL = "/"
 LOGOUT_REDIRECT_URL = "/"
 
+# email auntentication
+
+ACCOUNT_EMAIL_REQUIRED = True
+#email configuration
+
+SOCIALACCOUNT_PROVIDERS = {
+  'google': {
+      'EMAIL_AUTHENTICATION': True
+  }
+}
+
 ACCOUNT_EMAIL_REQUIRED = True
 
 # Default primary key field type

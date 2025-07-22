@@ -165,6 +165,12 @@
                           {% endfor %}
                         </li>
                         <li class="nav-item">
+                            <a href="{% url 'circuit_gallery' %}" class="nav-link {% if request.path == '/circuit-gallery/' %} active {% endif %}">
+                                <i class="nav-icon fas fa-th-large"></i>
+                                <p>Circuit Gallery</p>
+                            </a>
+                        </li>
+                        <li class="nav-item">
                             {% url 'add_school' as add_school %}
                             <a href="{{add_school}}"
                                 class="nav-link  {% if add_school == request.path %} active {% endif %}">

@@ -371,8 +371,10 @@ urlpatterns = [
     #circuits
     path('circuit_gallery/', views.circuitGallery, name='circuit_gallery'),
     path('circuit/<int:pk>/', views.viewCircuit, name='view_circuit'),
+    path('edit-circuit/<int:pk>/', views.editCircuit, name='edit_circuit'),
     path('add_circuit/', views.addCircuit, name='add_circuit'),
     path('delete/<int:pk>/', views.deleteCircuit, name='delete_circuit'),
+    path('no-access/', views.no_access_view, name='no_access'),
     #coment and reply sections
     path('add-comment/', views.add_comment, name='add_comment'),
     path('add-reply/', views.add_reply, name='add_reply'),

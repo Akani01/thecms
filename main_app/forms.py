@@ -503,30 +503,31 @@ class SchoolForm(forms.ModelForm):
     class Meta:
         model = School
         fields = [
+            'circuit',  # ✅ Add this
             'emis', 'name', 'contact', 'phase', 'sector', 'educators_on_db',
             'school_type', 'school_term', 'logo', 'head_principal', 'deputy',
             'filter_by', 'website_url', 'email', 'whatsapp_number', 'grade',
             'address', 'year', 'count'
         ]
         widgets = {
+            'circuit': forms.Select(attrs={'class': 'form-control'}),  # ✅ Add widget
             'emis': forms.TextInput(attrs={'class': 'form-control'}),
-            'name': forms.Select(attrs={'class': 'form-control'}),  # Select for choices
+            'name': forms.TextInput(attrs={'class': 'form-control'}),
             'phase': forms.TextInput(attrs={'class': 'form-control'}),
             'sector': forms.TextInput(attrs={'class': 'form-control'}),
             'educators_on_db': forms.NumberInput(attrs={'class': 'form-control'}),
-            'school_type': forms.Select(attrs={'class': 'form-control'}),  # Select for choices
-            'school_term': forms.TextInput(attrs={'class': 'form-control'}), # Select for choices
-            'filter_by': forms.Select(attrs={'class': 'form-control'}),  # Select for choices
+            'school_type': forms.Select(attrs={'class': 'form-control'}),
+            'school_term': forms.TextInput(attrs={'class': 'form-control'}),
+            'filter_by': forms.Select(attrs={'class': 'form-control'}),
             'website_url': forms.TextInput(attrs={'class': 'form-control'}),
-            'email': forms.EmailInput(attrs={'class': 'form-control'}),  # Email field
+            'email': forms.EmailInput(attrs={'class': 'form-control'}),
             'whatsapp_number': forms.TextInput(attrs={'class': 'form-control'}),
             'contact': forms.TextInput(attrs={'class': 'form-control'}),
             'address': forms.TextInput(attrs={'class': 'form-control'}),
             'year': forms.NumberInput(attrs={'class': 'form-control'}),
             'count': forms.NumberInput(attrs={'class': 'form-control'}),
         }
-
-
+        
         
 #school dashboard phase
 class SchoolEditForm(forms.ModelForm):
