@@ -48,8 +48,8 @@ ALLOWED_HOSTS = [
 CSRF_TRUSTED_ORIGINS = [
     "https://thecms.co.za",
     "https://www.thecms.co.za",
-    "https://elimcircuit.com",
-    "https://www.elimcircuit.com",
+    "https://elimcircuit.co.za",
+    "https://elimcircuit.co.za",
     "https://*.railway.app",
     "https://*.herokuapp.com",
     "http://localhost:8000",
