@@ -1,93 +1,83 @@
 {% extends 'main_app/base.html' %}
 {% load static %}
-{% block title %}Bursaries | Learning Management System{% endblock title %}
+{% block title %}{{ college.title }} | College Detail{% endblock title %}
 
 {% block content %}
 
 <nav style="--bs-breadcrumb-divider: '>';" aria-label="breadcrumb">
     <ol class="breadcrumb">
         <li class="breadcrumb-item"><a href="/">Home</a></li>
-        <li class="breadcrumb-item active" aria-current="page">Bursary List</li>
+        <li class="breadcrumb-item"><a href="{% url 'college_list' %}">College List</a></li>
+        <li class="breadcrumb-item active" aria-current="page">{{ college.title }}</li>
     </ol>
 </nav>
 
-{% if request.user.is_superuser %}
-<div class="manage-wrap">
-    <a class="btn btn-primary" href="{% url 'bursary_add' %}"><i class="fas fa-plus"></i>Add New Bursary</a>
-</div>
-{% endif %}
+<div class="title-1"><i class="fas fa-university"></i> {{ college.title }}</div>
 
-<div class="title-1"><i class="fas fa-graduation-cap"></i>Bursary List</div>
+<div class="row mt-4">
+    <div class="col-md-4 text-center">
+        <img src="{{ college.get_picture }}" alt="{{ college.title }}" class="img-thumbnail" style="max-width: 200px;">
+    </div>
+    <div class="col-md-8">
+        <p><strong>Summary:</strong><br>{{ college.summary|linebreaks }}</p>
+        <p><strong>Posted As:</strong> {{ college.get_posted_as_display }}</p>
+        <p><strong>Uploaded On:</strong> {{ college.upload_time }}</p>
 
-{% if messages %}
-    {% for message in messages %}
-        {% if message.tags == 'error' %}
-            <div class="alert alert-danger">
-                <i class="fas fa-exclamation-circle"></i>{{ message }}
-            </div>
-        {% else %}
-            <div class="alert alert-success">
-                <i class="fas fa-check-circle"></i>{{ message }}
-            </div>
+        {% if college.website_url %}
+        <a href="https://{{ college.website_url|cut:'https://'|cut:'http://' }}" target="_blank" class="btn btn-sm btn-primary">
+            Visit Official Website <i class="fas fa-external-link-alt"></i>
+        </a>
         {% endif %}
-    {% endfor %}
-{% endif %}
 
-<div class="table-responsive table-shadow p-0 mt-5">
-    <table class="table">
-        <thead>
-            <tr>
-                <th>#</th>
-                <th>Picture</th>
-                <th>Title</th>
-                <th>Summary</th>
-                <th>Posted As</th>
-                <th>Upload Time</th>
-                {% if request.user.is_superuser %}
-                <th>Actions</th>
-                {% endif %}
-            </tr>
-        </thead>
-        <tbody>
-            {% for bursary in bursaries %}
-            <tr>
-                <td>{{ forloop.counter }}.</td>
-                <td>
-                    <img src="{{ bursary.get_picture }}" alt="{{ bursary.title }}" class="img-thumbnail" style="max-width: 100px; max-height: 100px;">
-                </td>
-                <td>{{ bursary.title }}</td>
-                <td>{{ bursary.summary }}</td>
-                <td>{{ bursary.get_posted_as_display }}</td>
-                <td>{{ bursary.upload_time }}</td>
-                {% if request.user.is_superuser %}
-                <td>
-                    <div class="update-delete">
-                        <a href="{% url 'bursary_update' pk=bursary.pk %}" class="update" title="Edit">
-                            <i class="fas fa-pencil-alt"></i>
-                        </a>
-                        <a href="{% url 'bursary_delete' pk=bursary.pk %}" class="delete" title="Delete">
-                            <i class="fas fa-trash-alt"></i>
-                        </a>
-                    </div>
-                </td>
-                {% endif %}
-            </tr>
-            {% empty %}
-            <tr>
-                <td colspan="7">
-                    <span class="text-danger">
-                        No Bursaries available.
-                        {% if request.user.is_superuser %}
-                        <a href="{% url 'bursary_add' %}">
-                            <i class="primary" style="font-size: 22px;">Add Bursary Now.</i>
-                        </a>
-                        {% endif %}
-                    </span>
-                </td>
-            </tr>
-            {% endfor %}
-        </tbody>
-    </table>
+        <button class="btn btn-outline-secondary btn-sm share-btn mt-2"
+                data-title="{{ college.title }}"
+                data-url="{% url 'college_detail' pk=college.pk %}"
+                data-img="{{ college.get_picture }}">
+            <i class="fas fa-share-alt"></i> Share
+        </button>
+
+        {% if request.user.is_superuser %}
+        <div class="mt-4">
+            <a href="{% url 'college_update' pk=college.pk %}" class="btn btn-warning btn-sm me-2">
+                <i class="fas fa-pencil-alt"></i> Edit
+            </a>
+            <a href="{% url 'college_delete' pk=college.pk %}" class="btn btn-danger btn-sm">
+                <i class="fas fa-trash-alt"></i> Delete
+            </a>
+        </div>
+        {% endif %}
+    </div>
 </div>
+
+<!-- Share JS -->
+<script>
+  document.addEventListener('DOMContentLoaded', function () {
+    const shareBtn = document.querySelector('.share-btn');
+    if (shareBtn) {
+      shareBtn.addEventListener('click', async function () {
+        const title = this.getAttribute('data-title');
+        const path = this.getAttribute('data-url');
+        const fullUrl = window.location.origin + path;
+
+        const shareText = `${title}\nView it here: ${fullUrl}`;
+
+        if (navigator.share) {
+          try {
+            await navigator.share({
+              title: title,
+              text: shareText,
+              url: fullUrl
+            });
+          } catch (err) {
+            console.error('Share failed:', err);
+          }
+        } else {
+          const encoded = encodeURIComponent(shareText);
+          window.open(`https://wa.me/?text=${encoded}`, '_blank');
+        }
+      });
+    }
+  });
+</script>
 
 {% endblock content %}

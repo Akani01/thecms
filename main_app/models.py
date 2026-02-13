@@ -3,9 +3,6 @@ from django.contrib.auth.models import UserManager
 from django.dispatch import receiver
 from django.db.models.signals import post_save
 from django.db import models
-from django.conf import settings
-from django.utils import timezone
-from django.core.validators import FileExtensionValidator
 from datetime import datetime
 from django.contrib.auth.models import AbstractUser
 from django.utils import timezone
@@ -18,6 +15,8 @@ from django.contrib.auth.models import BaseUserManager
 from django.conf import settings
 from django.core.files import File
 from io import BytesIO
+from django.core.validators import FileExtensionValidator
+from .validators import validate_file_size, validate_video_file_extension, validate_image_file_extension
 from PIL import Image, ImageDraw
 from django.core.validators import MaxValueValidator
 from django.utils import timezone
@@ -103,9 +102,6 @@ class NewsAndEvents(models.Model):
     upload_time = models.DateTimeField(auto_now_add=True)
     image = models.ImageField(upload_to="news_images/%y/%m/%d/", default="default.png", null=True)
 
-    class Meta:
-        managed = False
-        db_table = 'main_app_newsandevents'
 
     def __str__(self):
         return self.title
@@ -150,25 +146,112 @@ class Session(models.Model):
 
 #Custom UserSettings
 class CustomUser(AbstractUser):
-    USER_TYPE = ((1, "HOD"), (2, "Staff"), (3, "Student"), (4,"Principal"), (5,"Educator"), (6,"Circuit_Manager"), (7, "Parent"), (8, "Member"), (9, "CWA_Admin"))
-    GENDER = [("M", "Male"), ("F", "Female")]
-    username = None  # Removed username, using email instead
+    USER_TYPE = (
+        (1, "HOD"),
+        (2, "Staff"),
+        (3, "Student"),
+        (4, "Principal"),
+        (5, "Educator"),
+        (6, "Circuit_Manager"),
+        (7, "Parent"),
+        (8, "Member"),
+        (9, "CWA_Admin"),
+        (10, "Applicant"),  # hiring applicant
+    )
+
+    GENDER = (
+        ("M", "Male"),
+        ("F", "Female"),
+    )
+
+    username = None
     email = models.EmailField(unique=True)
-    user_type = models.CharField(default=1, choices=USER_TYPE, max_length=1)
+
+    # ⚠️ keep as-is (production)
+    user_type = models.CharField(
+        default=1,
+        choices=USER_TYPE,
+        max_length=1
+    )
+
+    mobile_phone = models.CharField(max_length=15, blank=True, null=True)
     gender = models.CharField(max_length=1, choices=GENDER)
-    profile_pic = models.ImageField()
-    address = models.TextField()
-    fcm_token = models.TextField(default="")  # For firebase notifications
+    profile_pic = models.ImageField(upload_to="profile_pics/", blank=True, null=True)
+    address = models.TextField(blank=True)
+
+    fcm_token = models.TextField(default="")
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
+
     USERNAME_FIELD = "email"
     REQUIRED_FIELDS = []
+
     objects = CustomUserManager()
 
     def __str__(self):
-        return self.last_name + ", " + self.first_name
+        return f"{self.last_name}, {self.first_name}"
 
+    # ===============================
+    # SCHOOL SYSTEM ACCESS
+    # ===============================
 
+    @property
+    def student(self):
+        try:
+            if self.user_type == "3":
+                return Student.objects.get(admin=self)
+        except Student.DoesNotExist:
+            return None
+        return None
+
+    @property
+    def staff(self):
+        try:
+            if self.user_type == "2":
+                return Staff.objects.get(admin=self)
+        except Staff.DoesNotExist:
+            return None
+        return None
+
+    @property
+    def adminhod(self):
+        try:
+            if self.user_type == "1":
+                return AdminHOD.objects.get(admin=self)
+        except AdminHOD.DoesNotExist:
+            return None
+        return None
+
+    # ===============================
+    # 🔥 HIRING SYSTEM ACCESS (FIXED)
+    # ===============================
+
+    @property
+    def is_applicant(self):
+        return self.user_type == "10"
+
+    @property
+    def applicant_profile(self):
+        """
+        Uses existing ApplicantProfile OneToOne
+        """
+        if not self.is_applicant:
+            return None
+        return getattr(self, "applicantprofile", None)
+
+    @property
+    def is_business(self):
+        """
+        Business user = has BusinessProfile
+        """
+        return hasattr(self, "businessprofile")
+
+    @property
+    def business_profile(self):
+        """
+        Uses existing BusinessProfile OneToOne
+        """
+        return getattr(self, "businessprofile", None)
 
 #grade
 class Grade(models.Model):
@@ -176,9 +259,6 @@ class Grade(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
     created_at = models.DateTimeField(auto_now_add=True)
     
-    class Meta:
-        managed = False
-        db_table = 'main_app_grade'
 
     def __str__(self):
         return self.name
@@ -254,7 +334,7 @@ class School(models.Model):
 #Course
 class Course(models.Model):
     name = models.CharField(max_length=120)
-    school = models.ForeignKey(School, on_delete=models.DO_NOTHING, null=True, blank=False)
+    school = models.ForeignKey(School, on_delete=models.DO_NOTHING, null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -265,7 +345,7 @@ class Course(models.Model):
 
 #Custom User 2
 class Staff(models.Model):
-    course = models.ForeignKey(Course, on_delete=models.DO_NOTHING, null=True, blank=False)
+    school = models.ForeignKey(School, on_delete=models.DO_NOTHING, null=True, blank=False)
     admin = models.OneToOneField(CustomUser, on_delete=models.CASCADE)
 
     def __str__(self):
@@ -277,7 +357,7 @@ class Staff(models.Model):
 class Subject(models.Model):
     name = models.CharField(max_length=120)
     grade = models.ForeignKey(Grade, on_delete=models.CASCADE)
-    course = models.ForeignKey(Course, on_delete=models.CASCADE, related_name='subjects')  # Added related_name
+    course = models.ForeignKey(Course, on_delete=models.CASCADE, related_name='subjects', null=True, blank=True)  # Make optional
     updated_at = models.DateTimeField(auto_now=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
@@ -288,16 +368,13 @@ class Subject(models.Model):
 # EDUCATOR MODEL
 class Educator(models.Model):
     admin = models.OneToOneField(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
-    circuit = models.ForeignKey(Circuit, on_delete=models.DO_NOTHING, null=True, blank=False)
-    school = models.ForeignKey(School, on_delete=models.DO_NOTHING, null=True, blank=False)
-    grade = models.ForeignKey('Grade', on_delete=models.DO_NOTHING, null=True)
+    school = models.ForeignKey(School, on_delete=models.DO_NOTHING, null=True)
+    grades = models.ManyToManyField('Grade')  # ✅ changed to many-to-many
     subjects = models.ManyToManyField('Subject')
-    session = models.ForeignKey('Session', on_delete=models.DO_NOTHING, null=True)
-    term = models.ForeignKey('Term', on_delete=models.DO_NOTHING, null=True)
-    course = models.ForeignKey('Course', on_delete=models.DO_NOTHING, null=True, blank=False)
 
     def __str__(self):
         return f"{self.admin.last_name}, {self.admin.first_name}"
+
     
 #Admin
 class Admin(models.Model):
@@ -308,15 +385,13 @@ class Admin(models.Model):
 # STUDENT MODEL
 class Student(models.Model):
     admin = models.OneToOneField(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
-    course = models.ForeignKey('Course', on_delete=models.DO_NOTHING, null=True, blank=False)
-    session = models.ForeignKey('Session', on_delete=models.DO_NOTHING, null=True)
-    circuit = models.ForeignKey(Circuit, on_delete=models.DO_NOTHING, null=True, blank=False)
-    school = models.ForeignKey(School, on_delete=models.DO_NOTHING, null=True, blank=False)
-    grade = models.ForeignKey('Grade', on_delete=models.DO_NOTHING, null=True, blank=False)
+    course = models.ForeignKey('Course', on_delete=models.SET_NULL, null=True, blank=True)  # FIXED: blank=True
+    circuit = models.ForeignKey(Circuit, on_delete=models.PROTECT, null=False, blank=False)
+    school = models.ForeignKey(School, on_delete=models.PROTECT, null=False, blank=False)
+    grade = models.ForeignKey('Grade', on_delete=models.PROTECT, null=False, blank=False)
 
     def __str__(self):
-        return f"{self.admin.last_name}, {self.admin.first_name}"
-    
+        return f"{self.admin.last_name}, {self.admin.first_name}"   
 
 #informal student result
 class InformalStudentResult(models.Model):
@@ -411,12 +486,9 @@ class StudentResult(models.Model):
 #MEMBER
 class Member(models.Model):
    admin = models.OneToOneField(CustomUser, on_delete=models.CASCADE)
-   school = models.ForeignKey(School, on_delete=models.DO_NOTHING, null=True, blank=False)
    position = models.CharField(max_length=20, null=True, blank=True)
    #report
-   session = models.ForeignKey(Session, on_delete=models.DO_NOTHING, null=True)
-   term = models.ForeignKey(Term, on_delete=models.DO_NOTHING, null=True)
-
+   
    def __str__(self):
         return self.admin.last_name + ", " + self.admin.first_name
 
@@ -436,32 +508,63 @@ class CWA_Admin(models.Model):
 
 #parent
 class Parent(models.Model):
-   admin = models.OneToOneField(CustomUser, on_delete=models.CASCADE)
-   school = models.ForeignKey(School, on_delete=models.DO_NOTHING, null=True, blank=False)
-   student = models.ManyToManyField(Student, related_name='parents')
-   grade = models.ForeignKey(Grade, on_delete=models.DO_NOTHING)
-   #report
-   session = models.ForeignKey(Session, on_delete=models.DO_NOTHING, null=True)
-   term = models.ForeignKey(Term, on_delete=models.DO_NOTHING, null=True)
-   #student, studentresult, grade, attendancereport, educator,  subject , course 
-   def __str__(self):
-        return self.admin.last_name + ", " + self.admin.first_name
+    EMPLOYMENT_STATUS = [
+        ('employed', 'Employed'),
+        ('unemployed', 'Unemployed'),
+        ('self_employed', 'Self-employed'),
+        ('retired', 'Retired'),
+        ('other', 'Other'),
+    ]
 
-#Custom User 4
+    EDUCATION_LEVELS = [
+        ('none', 'No formal education'),
+        ('primary', 'Primary education'),
+        ('secondary', 'Secondary education'),
+        ('tertiary', 'Tertiary education'),
+        ('postgraduate', 'Postgraduate education'),
+    ]
+
+    RELATIONSHIP_CHOICES = [
+        ('mother', 'Mother'),
+        ('father', 'Father'),
+        ('guardian', 'Guardian'),
+        ('other', 'Other'),
+    ]
+
+    # Required link to user
+    admin = models.OneToOneField(CustomUser, on_delete=models.CASCADE)
+
+    # Optional school connection
+    school = models.ForeignKey(School, on_delete=models.DO_NOTHING, null=True, blank=True)
+
+    # Relationship to student(s)
+    student = models.ManyToManyField(Student, related_name='parents')
+    relationship = models.CharField(max_length=10, choices=RELATIONSHIP_CHOICES, default='other')
+
+    # Parent background
+    employment_status = models.CharField(max_length=20, choices=EMPLOYMENT_STATUS, null=True, blank=True)
+    occupation = models.CharField(max_length=100, null=True, blank=True)
+    education_level = models.CharField(max_length=20, choices=EDUCATION_LEVELS, null=True, blank=True)
+
+    # Optional report-related fields
+    session = models.ForeignKey(Session, on_delete=models.DO_NOTHING, null=True, blank=True)
+    term = models.ForeignKey(Term, on_delete=models.DO_NOTHING, null=True, blank=True)
+
+    def __str__(self):
+        return f"{self.admin.last_name}, {self.admin.first_name}"
+
+#Principal
+# Custom User 4
 class Principal(models.Model):
     admin = models.OneToOneField(CustomUser, on_delete=models.CASCADE)
-    circuit = models.ForeignKey(Circuit, on_delete=models.DO_NOTHING, null=True, blank=False)
     school = models.ForeignKey(School, on_delete=models.DO_NOTHING, null=True, blank=False)
-    grade = models.ForeignKey(Grade, on_delete=models.DO_NOTHING, null=True)
-    #report
-    subject = models.ForeignKey(Subject, on_delete=models.DO_NOTHING, null=True)
-    term = models.ForeignKey(Term, on_delete=models.DO_NOTHING, null=True)
-    course = models.ForeignKey(Course, on_delete=models.DO_NOTHING, null=True, blank=False)
-    #attendancereport, subject, course, session, term, student, studentresult, educator, parent, member
+    grades = models.ManyToManyField(Grade)  # ✅ Changed to ManyToMany
+    subjects = models.ManyToManyField(Subject)  # ✅ Changed to ManyToMany
 
     def __str__(self):
         return self.admin.last_name + ", " + self.admin.first_name
 
+        
 #Circuit manager
 class Circuit_Manager(models.Model):
     admin = models.OneToOneField(CustomUser, on_delete=models.CASCADE)
@@ -485,50 +588,29 @@ class QuestionPaperManager(models.Manager):
         return self.get_queryset().search(query)
 
 
+
+#create an account
 @receiver(post_save, sender=CustomUser)
 def create_user_profile(sender, instance, created, **kwargs):
     if created:
         if instance.user_type == 1:
             Admin.objects.create(admin=instance)
-        if instance.user_type == 2:
+        elif instance.user_type == 2:
             Staff.objects.create(admin=instance)
-        if instance.user_type == 3:
-            Student.objects.create(admin=instance)
-        if instance.user_type == 4:
+        elif instance.user_type == 3:
+            Student.objects.create(admin=instance)  # Creates empty student
+        elif instance.user_type == 4:
             Principal.objects.create(admin=instance)
-        if instance.user_type == 5:
+        elif instance.user_type == 5:
             Educator.objects.create(admin=instance)
-        if instance.user_type == 6:
+        elif instance.user_type == 6:
             Circuit_Manager.objects.create(admin=instance)
-        if instance.user_type == 7:
+        elif instance.user_type == 7:
             Parent.objects.create(admin=instance)
-        if instance.user_type == 8:
+        elif instance.user_type == 8:
             Member.objects.create(admin=instance)
-        if instance.user_type == 9:
+        elif instance.user_type == 9:
             CWA_Admin.objects.create(admin=instance)
-
-
-@receiver(post_save, sender=CustomUser)
-def save_user_profile(sender, instance, **kwargs):
-    if instance.user_type == 1:
-        instance.admin.save()
-    if instance.user_type == 2:
-        instance.staff.save()
-    if instance.user_type == 3:
-        instance.student.save()
-    if instance.user_type == 4:
-        instance.principal.save()
-    if instance.user_type == 5:
-        instance.educator.save()
-    if instance.user_type == 6:
-        instance.circuit_manager.save()
-    if instance.user_type == 7:
-        instance.parent.save()
-    if instance.user_type == 8:
-        instance.member.save()
-    if instance.user_type == 9:
-        instance.cwa_admin.save()
-
 
 #Documents
 
@@ -811,27 +893,290 @@ class Prospectors(models.Model):
         return self.institution
 
 #models
-class Comment(models.Model):
-    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)  # Best practice
-    # OR explicitly (if you prefer):
-    # user = models.ForeignKey(CustomUser, on_delete=models.CASCADE)
-    content = models.TextField()
+
+class Industry(models.Model):
+    name = models.CharField(max_length=100, unique=True)
+    description = models.TextField(blank=True)
+    is_active = models.BooleanField(default=True)
     created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
-    parent = models.ForeignKey('self', null=True, blank=True, on_delete=models.CASCADE, related_name='replies')
-    likes = models.ManyToManyField(settings.AUTH_USER_MODEL, related_name='comment_likes', blank=True)
+    
+    class Meta:
+        app_label = 'hiring'
+        verbose_name_plural = 'Industries'
+        ordering = ['name']
     
     def __str__(self):
-        return f"Comment by {self.user.username}"
+        return self.name
+
+
+
+class CompanySize(models.Model):
+    size_range = models.CharField(max_length=50, unique=True)
+    description = models.CharField(max_length=200, blank=True)
+    min_employees = models.IntegerField()
+    max_employees = models.IntegerField(null=True, blank=True)
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
     
-    @property
-    def like_count(self):
-        return self.likes.count()
+    class Meta:
+        app_label = 'hiring'
+        verbose_name_plural = 'Company Sizes'
+        ordering = ['min_employees']
     
-    @property
-    def reply_count(self):
-        return self.replies.count()
+    def __str__(self):
+        return self.size_range
+
+
+class BusinessProfile(models.Model):
+    user = models.OneToOneField(CustomUser, on_delete=models.CASCADE, related_name='business_profile')
+    company_name = models.CharField(max_length=200)
+    company_description = models.TextField(blank=True)
+    company_size = models.ForeignKey(CompanySize, on_delete=models.SET_NULL, null=True, blank=True)
+    industry = models.ForeignKey(Industry, on_delete=models.SET_NULL, null=True, blank=True)
+    website = models.URLField(blank=True)
+    phone_number = models.CharField(max_length=20, blank=True)
+    address = models.TextField(blank=True)
+    city = models.CharField(max_length=100, blank=True)
+    country = models.CharField(max_length=100, blank=True)
+    postal_code = models.CharField(max_length=20, blank=True)
     
+    # Company Logo
+    company_logo = models.ImageField(
+        upload_to='company_logos/%Y/%m/%d/', 
+        blank=True, 
+        null=True, 
+        validators=[FileExtensionValidator(['jpg', 'jpeg', 'png', 'svg', 'webp'])]
+    )
+    
+    # Business verification
+    is_verified = models.BooleanField(default=False)
+    verification_document = models.FileField(upload_to='verification_docs/%Y/%m/%d/', blank=True, null=True)
+    
+    # Preferences
+    receive_applicant_notifications = models.BooleanField(default=True)
+    receive_newsletter = models.BooleanField(default=True)
+    
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    
+    class Meta:
+        app_label = 'hiring'
+    
+    def __str__(self):
+        return f"{self.company_name} - {self.user.username}"
+    
+    def get_company_logo_url(self):
+        """Get company logo URL or return default logo"""
+        if self.company_logo:
+            return self.company_logo.url
+        return '/static/hiring/images/default-company-logo.png'
+
+
+class JobListing(models.Model):
+    LISTING_STATUS = (
+        ('draft', 'Draft'), 
+        ('under_review', 'Under Review'), 
+        ('published', 'Published'), 
+        ('closed', 'Closed')
+    )
+    
+    listing_reference = models.CharField(max_length=50, unique=True)
+    title = models.CharField(max_length=200)
+    status = models.CharField(max_length=20, choices=LISTING_STATUS, default='draft')
+    apply_by = models.DateField()
+    position_summary = models.TextField()
+    industry = models.CharField(max_length=100)
+    job_category = models.CharField(max_length=100)
+    location = models.CharField(max_length=100)
+    contract_type = models.CharField(max_length=50)
+    ee_position = models.BooleanField(default=True)
+    company_name = models.CharField(max_length=200, default='Admin')
+    company_logo = models.ImageField(
+        upload_to='company_logos/%Y/%m/%d/', 
+        blank=True, 
+        null=True, 
+        validators=[FileExtensionValidator(['jpg', 'jpeg', 'png', 'svg', 'webp'])]
+    )
+    company_description = models.TextField()
+    job_description = models.TextField()
+    knowledge_requirements = models.TextField()
+    skills_requirements = models.TextField()
+    competencies_requirements = models.TextField()
+    experience_requirements = models.TextField()
+    education_requirements = models.TextField()
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    
+    class Meta:
+        app_label = 'hiring'
+    
+    def __str__(self):
+        return f"{self.title} - {self.listing_reference}"
+    
+    def get_company_logo_url(self):
+        if self.company_logo:
+            return self.company_logo.url
+        return '/static/hiring/images/default-company-logo.png'
+
+
+class Post(models.Model):
+    POST_TYPES = [
+        ('job', 'Job Post'),
+        ('update', 'Company Update'),
+        ('news', 'Industry News'),
+        ('general', 'General Post'),
+        ('question', 'Question'),
+        ('achievement', 'Achievement'),
+        ('advice', 'Career Advice'),
+    ]
+    
+    VISIBILITY_CHOICES = [
+        ('public', 'Public - Everyone'),
+        ('connections', 'Connections Only'),
+        ('company', 'Company Only'),
+        ('private', 'Private - Just Me'),
+    ]
+    
+    author = models.ForeignKey(CustomUser, on_delete=models.CASCADE)
+    company = models.ForeignKey(BusinessProfile, on_delete=models.CASCADE, null=True, blank=True)
+    post_type = models.CharField(max_length=20, choices=POST_TYPES, default='general')
+    title = models.CharField(max_length=200)
+    content = models.TextField()
+    image = models.ImageField(
+        upload_to='posts/images/%Y/%m/%d/', 
+        null=True, 
+        blank=True,
+        validators=[validate_file_size, validate_image_file_extension]
+    )
+    video = models.FileField(
+        upload_to='posts/videos/%Y/%m/%d/', 
+        null=True, 
+        blank=True,
+        validators=[validate_file_size, validate_video_file_extension]
+    )
+    video_url = models.URLField(blank=True)  # For YouTube/Vimeo links
+    tags = models.CharField(max_length=500, blank=True, help_text="Comma-separated tags")
+    
+    # Engagement metrics
+    views = models.PositiveIntegerField(default=0)
+    likes = models.ManyToManyField(CustomUser, related_name='post_likes', blank=True)
+    dislikes = models.ManyToManyField(CustomUser, related_name='post_dislikes', blank=True)
+    shares = models.PositiveIntegerField(default=0)
+    comment_count = models.PositiveIntegerField(default=0)  # Comment count field
+    
+    # Ratings
+    average_rating = models.FloatField(default=0)
+    rating_count = models.PositiveIntegerField(default=0)
+    
+    # Post visibility
+    visibility = models.CharField(max_length=20, choices=VISIBILITY_CHOICES, default='public')
+    
+    # Timestamps
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    edited_at = models.DateTimeField(null=True, blank=True)
+    
+    # Status flags
+    is_published = models.BooleanField(default=True)
+    is_edited = models.BooleanField(default=False)
+    
+    class Meta:
+        ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['-created_at']),
+            models.Index(fields=['post_type']),
+            models.Index(fields=['author']),
+            models.Index(fields=['is_published']),
+        ]
+    
+    def __str__(self):
+        return f"{self.title} by {self.author.username}"
+    
+    def total_engagement(self):
+        """Calculate total engagement score"""
+        return self.likes.count() + self.comment_count + self.shares
+    
+    def update_comment_count(self):
+        """Update comment count from related comments"""
+        count = self.comments.count()
+        if self.comment_count != count:
+            self.comment_count = count
+            self.save(update_fields=['comment_count'])
+        return count
+
+    def get_tags_list(self):
+        """Convert comma-separated tags string to list"""
+        if not self.tags:
+            return []
+        # Split by comma and clean up whitespace
+        tag_list = [tag.strip() for tag in self.tags.split(',') if tag.strip()]
+        return tag_list
+    
+    # You might also want to add a setter method
+    def set_tags_list(self, tag_list):
+        """Convert list to comma-separated string"""
+        if tag_list:
+            self.tags = ', '.join([str(tag).strip() for tag in tag_list])
+        else:
+            self.tags = ''
+
+    def get_tags_list(self, obj):
+        # Safe version that handles missing method
+        try:
+            return obj.get_tags_list()
+        except AttributeError:
+            # Fallback if method doesn't exist
+            if obj.tags:
+                return [tag.strip() for tag in obj.tags.split(',') if tag.strip()]
+            return []
+        
+
+class Comment(models.Model):
+    # Foreign keys to content types
+    post = models.ForeignKey(Post, on_delete=models.CASCADE, related_name='comments', null=True, blank=True)
+    job_listing = models.ForeignKey(JobListing, on_delete=models.CASCADE, related_name='comments', null=True, blank=True)
+    
+    # Comment content and author
+    author = models.ForeignKey(CustomUser, on_delete=models.CASCADE)
+    content = models.TextField()
+    parent_comment = models.ForeignKey('self', on_delete=models.CASCADE, null=True, blank=True, related_name='replies')
+    
+    # Engagement
+    likes = models.ManyToManyField(CustomUser, related_name='comment_likes', blank=True)
+    
+    # Timestamps
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    
+    # Status flags
+    is_edited = models.BooleanField(default=False)
+    
+    class Meta:
+        ordering = ['-created_at']
+    
+    def __str__(self):
+        if self.post:
+            return f"Comment by {self.author.username} on post: {self.post.title}"
+        elif self.job_listing:
+            return f"Comment by {self.author.username} on job: {self.job_listing.title}"
+        return f"Comment by {self.author.username}"
+    
+    def clean(self):
+        """
+        Ensure comment is attached to either a post OR a job listing, not both.
+        Raises ValidationError if constraints are violated.
+        """
+        if not self.post and not self.job_listing:
+            raise ValidationError("Comment must be attached to either a post or a job listing")
+        if self.post and self.job_listing:
+            raise ValidationError("Comment cannot be attached to both a post and a job listing")
+    
+    def save(self, *args, **kwargs):
+        """Override save to run validation before saving"""
+        self.clean()
+        super().save(*args, **kwargs)
+
+ 
 
 class Document(models.Model):
     title = models.CharField(max_length=200)
@@ -880,4 +1225,64 @@ class AIChatLog(models.Model):
     
     def __str__(self):
         return f"{self.get_question_type_display()} - {self.created_at}"
-    
+
+#video comment
+class VideoCategory(models.Model):
+    name = models.CharField(max_length=255, unique=True)
+
+    def __str__(self):
+        return self.name
+
+#video
+class Video(models.Model):
+    author = models.ForeignKey(CustomUser, on_delete=models.CASCADE)
+    category = models.ForeignKey(VideoCategory, on_delete=models.SET_NULL, null=True, blank=True)
+    title = models.CharField(max_length=255)
+    description = models.TextField(blank=True, null=True)
+    video_file = models.FileField(upload_to='videos/', null=True, blank=True)  # ✅ Add this line
+    thumbnail = models.ImageField(upload_to='video_thumbnails/', null=True, blank=True)
+    date_posted = models.DateTimeField(default=timezone.now)
+
+
+    # Social links
+    website_url = models.CharField(max_length=2000, null=True, blank=True)
+    gmail_url = models.CharField(max_length=2000, null=True, blank=True)
+    whatsapp_number = models.CharField(max_length=20, null=True, blank=True)
+    facebook_url = models.CharField(max_length=300, null=True, blank=True)
+    tiktok_url = models.CharField(max_length=300, null=True, blank=True)
+    zoom_url = models.CharField(max_length=900, null=True, blank=True)
+    microsoftTeam_url = models.CharField(max_length=900, null=True, blank=True)
+    location = models.CharField(max_length=900, blank=True, null=True)
+    twitter_url = models.CharField(max_length=900, null=True, blank=True)
+    playstore_url = models.CharField(max_length=900, null=True, blank=True)
+    linkedin_url = models.CharField(max_length=900, null=True, blank=True)
+    instagram_url = models.CharField(max_length=900, null=True, blank=True)
+    pinterest_url = models.CharField(max_length=900, null=True, blank=True)
+    youtube_url = models.CharField(max_length=1000, null=True, blank=True)
+
+    def __str__(self):
+        return self.title
+
+#video comment
+class VideoComment(models.Model):
+    video = models.ForeignKey(Video, on_delete=models.CASCADE, related_name="comments")
+    user = models.ForeignKey(CustomUser, on_delete=models.CASCADE)
+    parent = models.ForeignKey('self', null=True, blank=True, on_delete=models.CASCADE, related_name="replies")
+    text = models.TextField()
+    created_at = models.DateTimeField(default=timezone.now)
+
+    def __str__(self):
+        return f"Comment by {self.user} on {self.video}"
+
+
+class VideoLike(models.Model):
+    video = models.ForeignKey(Video, on_delete=models.CASCADE, related_name="likes")
+    user = models.ForeignKey(CustomUser, on_delete=models.CASCADE)
+    created_at = models.DateTimeField(default=timezone.now)
+
+    class Meta:
+        unique_together = ('video', 'user')
+
+    def __str__(self):
+        return f"{self.user} likes {self.video}"
+

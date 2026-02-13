@@ -6,6 +6,7 @@ from crispy_forms.layout import Layout, Div, Row, Column
 from college.models import CollegeAndUniversities
 from bursary.models import Bursary
 from .models import *
+import re
 
 
 class FormSettings(forms.ModelForm):
@@ -58,96 +59,259 @@ class CustomUserForm(FormSettings):
         model = CustomUser
         fields = ['first_name','last_name', 'email', 'gender',  'password','profile_pic', 'address' ]
 
-#student Form
+#student form
 class StudentForm(CustomUserForm):
     class Meta(CustomUserForm.Meta):
         model = Student
-        fields = CustomUserForm.Meta.fields + ['school', 'grade', 'course', 'session', 'circuit']
+        fields = CustomUserForm.Meta.fields + ['school', 'grade', 'course']
+        widgets = {
+            'school': forms.Select(attrs={'class': 'form-control'}),
+            'grade': forms.Select(attrs={'class': 'form-control'}),
+            'course': forms.Select(attrs={'class': 'form-control'}),
+        }
 
     def __init__(self, *args, **kwargs):
-        super(StudentForm, self).__init__(*args, **kwargs)
-
-        # Mark required fields
-        required_fields = ['circuit', 'school', 'grade', 'course', 'session']
-        for field in required_fields:
-            if field in self.fields:
-                self.fields[field].required = True
-
-        # Optional: Add Bootstrap styling
+        super().__init__(*args, **kwargs)
+        
+        # Instead of redefining the fields, just update their properties
+        # Make fields required
+        self.fields['school'].required = True
+        self.fields['grade'].required = True
+        self.fields['course'].required = False  # Not required for R-9
+        
+        # Update querysets and empty labels
+        self.fields['school'].queryset = School.objects.all().order_by('name')
+        self.fields['school'].empty_label = "Select School"
+        
+        self.fields['grade'].queryset = Grade.objects.all().order_by('name')
+        self.fields['grade'].empty_label = "Select Grade"
+        
+        self.fields['course'].queryset = Course.objects.all().order_by('name')
+        self.fields['course'].empty_label = "Select Course (for Grade 10-12)"
+        
+        # Add help text
+        self.fields['grade'].help_text = "Select Grade R to Grade 12"
+        self.fields['course'].help_text = "Required only for Grades 10-12"
+        
+        # Handle Excel/import data - convert names to IDs
+        if 'grade' in self.data and self.data['grade']:
+            grade_input = self.data.get('grade')
+            if grade_input and not grade_input.isdigit():  # It's a name, not an ID
+                grade = self.find_grade(grade_input)
+                if grade:
+                    # Create mutable copy of data
+                    mutable_data = self.data.copy()
+                    mutable_data['grade'] = str(grade.id)
+                    self.data = mutable_data
+        
+        if 'school' in self.data and self.data['school']:
+            school_input = self.data.get('school')
+            if school_input and not school_input.isdigit():  # It's a name, not an ID
+                school = self.find_school(school_input)
+                if school:
+                    mutable_data = self.data.copy()
+                    mutable_data['school'] = str(school.id)
+                    self.data = mutable_data
+        
+        if 'course' in self.data and self.data['course']:
+            course_input = self.data.get('course')
+            if course_input and not course_input.isdigit():
+                course = self.find_course(course_input)
+                if course:
+                    mutable_data = self.data.copy()
+                    mutable_data['course'] = str(course.id)
+                    self.data = mutable_data
+        
+        # Toggle course field based on selected grade
+        self.toggle_course_field()
+        
+        # Style all fields (just in case)
         for field_name, field in self.fields.items():
-            field.widget.attrs['class'] = 'form-control'
-  
-
-#educator
+            if 'class' not in field.widget.attrs:
+                field.widget.attrs['class'] = 'form-control'
+    
+    def find_grade(self, grade_input):
+        """Find grade by various naming patterns from Excel"""
+        if not grade_input:
+            return None
+        
+        grade_input = str(grade_input).strip()
+        
+        # Try exact match first
+        grade = Grade.objects.filter(name__iexact=grade_input).first()
+        if grade:
+            return grade
+        
+        # Try with 'Grade' prefix
+        if not re.match(r'^(grade|gr|grd)\s+', grade_input, re.IGNORECASE):
+            grade = Grade.objects.filter(name__iexact=f"Grade {grade_input}").first()
+            if grade:
+                return grade
+        
+        # Try common variations
+        variations = [
+            ('^gr\s+', 'Grade '),
+            ('^grd\s+', 'Grade '),
+            ('^grade\s+', 'Grade '),
+            ('^std\s+', 'Grade '),
+            ('^class\s+', 'Grade '),
+        ]
+        
+        for pattern, replacement in variations:
+            if re.match(pattern, grade_input, re.IGNORECASE):
+                normalized = re.sub(pattern, replacement, grade_input, flags=re.IGNORECASE)
+                grade = Grade.objects.filter(name__iexact=normalized).first()
+                if grade:
+                    return grade
+        
+        # Try partial match
+        grade = Grade.objects.filter(name__icontains=grade_input).first()
+        if grade:
+            return grade
+        
+        # Try extracting just the number
+        match = re.search(r'\b(R|\d+)\b', grade_input, re.IGNORECASE)
+        if match:
+            grade_num = match.group(1).upper()
+            # Try with Grade prefix
+            grade = Grade.objects.filter(name__iexact=f"Grade {grade_num}").first()
+            if grade:
+                return grade
+        
+        return None
+    
+    def find_school(self, school_input):
+        """Find school by name"""
+        if not school_input:
+            return None
+        
+        school_name = str(school_input).strip()
+        
+        # Try exact match
+        school = School.objects.filter(name__iexact=school_name).first()
+        if school:
+            return school
+        
+        # Try partial match
+        school = School.objects.filter(name__icontains=school_name).first()
+        if school:
+            return school
+        
+        return None
+    
+    def find_course(self, course_input):
+        """Find course by name"""
+        if not course_input:
+            return None
+        
+        course_name = str(course_input).strip()
+        
+        # Try exact match
+        course = Course.objects.filter(name__iexact=course_name).first()
+        if course:
+            return course
+        
+        # Try partial match
+        course = Course.objects.filter(name__icontains(course_name)).first()
+        if course:
+            return course
+        
+        return None
+    
+    def toggle_course_field(self):
+        """Show/hide course field based on selected grade"""
+        if 'grade' in self.data:
+            try:
+                grade_id = self.data.get('grade')
+                if grade_id and grade_id.isdigit():
+                    grade = Grade.objects.get(id=int(grade_id))
+                    if self.is_young_grade(grade.name):
+                        # Hide for R-9
+                        self.fields['course'].widget.attrs['style'] = 'display: none;'
+                        self.fields['course'].label = ''
+                        self.fields['course'].required = False
+                        # Remove 'disabled' attribute if it exists
+                        if 'disabled' in self.fields['course'].widget.attrs:
+                            del self.fields['course'].widget.attrs['disabled']
+                    else:
+                        # Show for 10-12
+                        if 'style' in self.fields['course'].widget.attrs:
+                            del self.fields['course'].widget.attrs['style']
+                        self.fields['course'].label = 'Course'
+                        self.fields['course'].required = True
+            except (ValueError, Grade.DoesNotExist):
+                pass
+    
+    def is_young_grade(self, grade_name):
+        """Check if grade is R-9 (no course needed)"""
+        if not grade_name:
+            return False
+        
+        grade_name = str(grade_name).strip().upper()
+        
+        # Clean the grade name
+        grade_name = re.sub(r'^(GRADE|GR|GRD|STD|CLASS)\s+', '', grade_name, flags=re.IGNORECASE)
+        
+        # Young grades are R, 1-9
+        young_grades = ['R', '1', '2', '3', '4', '5', '6', '7', '8', '9']
+        return grade_name in young_grades
+    
+    def clean(self):
+        """Custom validation"""
+        cleaned_data = super().clean()
+        
+        # Get grade and check course requirement
+        grade = cleaned_data.get('grade')
+        course = cleaned_data.get('course')
+        
+        if grade:
+            if not self.is_young_grade(grade.name) and not course:
+                # Grade 10-12 requires course
+                raise forms.ValidationError({
+                    'course': f"Course is required for {grade.name}"
+                })
+            
+            if self.is_young_grade(grade.name) and course:
+                # R-9 shouldn't have course
+                cleaned_data['course'] = None
+        
+        return cleaned_data
+#educator form 
+# educator form 
+# educator form 
 class EducatorForm(CustomUserForm):
     class Meta(CustomUserForm.Meta):
         model = Educator
-        fields = CustomUserForm.Meta.fields + [
-            'circuit', 'school', 'grade', 'session', 'term', 'course', 'subjects'
-        ]
+        fields = CustomUserForm.Meta.fields + ['school', 'grades', 'subjects']
 
     def __init__(self, *args, **kwargs):
         super(EducatorForm, self).__init__(*args, **kwargs)
 
-        # Add missing model fields to form manually
-        self.fields['circuit'] = forms.ModelChoiceField(
-            queryset=Circuit.objects.all(),
-            required=True,
-            label="Circuit"
-        )
         self.fields['school'] = forms.ModelChoiceField(
             queryset=School.objects.all(),
             required=True,
             label="School"
         )
-        self.fields['grade'] = forms.ModelChoiceField(
+
+        self.fields['grades'] = forms.ModelMultipleChoiceField(
             queryset=Grade.objects.all(),
             required=True,
-            label="Grade"
+            widget=forms.CheckboxSelectMultiple,  # ✅ Changed to checkboxes
+            label="Grades Taught"
         )
-        self.fields['session'] = forms.ModelChoiceField(
-            queryset=Session.objects.all(),
-            required=True,
-            label="Session"
-        )
-        self.fields['term'] = forms.ModelChoiceField(
-            queryset=Term.objects.all(),
-            required=True,
-            label="Term"
-        )
-        self.fields['course'] = forms.ModelChoiceField(
-            queryset=Course.objects.all(),
-            required=True,
-            label="Course"
-        )
+
         self.fields['subjects'] = forms.ModelMultipleChoiceField(
             queryset=Subject.objects.all(),
             required=True,
-            widget=forms.SelectMultiple(attrs={'size': 5}),
-            label="Subjects"
+            widget=forms.CheckboxSelectMultiple,  # ✅ Changed to checkboxes
+            label="Subjects Taught"
         )
 
-        # Add Bootstrap classes
+        # ✅ Bootstrap styling
         for field in self.fields.values():
-            field.widget.attrs['class'] = 'form-control'
+            if not isinstance(field.widget, forms.CheckboxSelectMultiple):
+                field.widget.attrs['class'] = 'form-control'
 
-        # Crispy layout (optional)
-        self.helper = FormHelper()
-        self.helper.layout = Layout(
-            Row(
-                Column('circuit', css_class='form-group col-md-6'),
-                Column('school', css_class='form-group col-md-6'),
-            ),
-            Row(
-                Column('grade', css_class='form-group col-md-4'),
-                Column('session', css_class='form-group col-md-4'),
-                Column('term', css_class='form-group col-md-4'),
-            ),
-            Row(
-                Column('course', css_class='form-group col-md-6'),
-                Column('subjects', css_class='form-group col-md-6'),
-            )
-        )
 
 #member
 class MemberForm(CustomUserForm):
@@ -160,9 +324,160 @@ class MemberForm(CustomUserForm):
 
     class Meta(CustomUserForm.Meta):
         model = Member
-        fields = CustomUserForm.Meta.fields + ['school', 'position', 'session', 'term']
+        fields = CustomUserForm.Meta.fields + ['position']  # ✅ Only fields that exist
+
 
 #cwa user
+class CWA_AdminEditForm(forms.ModelForm):
+    class Meta:
+        model = CWA_Admin
+        fields = ['admin', 'school', 'collegeanduniversity', 'bursary']
+        widgets = {
+            'admin': forms.HiddenInput(),
+        }
+
+    # Custom fields for the CustomUser
+    first_name = forms.CharField(max_length=30, required=True)
+    last_name = forms.CharField(max_length=30, required=True)
+    address = forms.CharField(widget=forms.Textarea, required=False)
+    gender = forms.ChoiceField(choices=[('M', 'Male'), ('F', 'Female'), ('O', 'Other')], required=False)
+    position = forms.CharField(max_length=30, required=True)
+    profile_pic = forms.ImageField(required=False)
+
+    def __init__(self, *args, **kwargs):
+        super(CWA_AdminEditForm, self).__init__(*args, **kwargs)
+        if 'instance' in kwargs:
+            instance = kwargs['instance']
+            self.fields['first_name'].initial = instance.admin.first_name
+            self.fields['last_name'].initial = instance.admin.last_name
+            self.fields['address'].initial = instance.admin.address
+            self.fields['gender'].initial = instance.admin.gender
+            self.fields['profile_pic'].initial = instance.admin.profile_pic
+
+    def save(self, commit=True):
+        cwa_admin = super(CWA_AdminEditForm, self).save(commit=False)
+        admin = cwa_admin.admin
+        
+        # Update CustomUser fields
+        admin.first_name = self.cleaned_data['first_name']
+        admin.last_name = self.cleaned_data['last_name']
+        admin.address = self.cleaned_data['address']
+        admin.gender = self.cleaned_data['gender']
+        
+        if self.cleaned_data['profile_pic']:
+            admin.profile_pic = self.cleaned_data['profile_pic']
+        
+        if commit:
+            admin.save()
+            cwa_admin.save()
+        
+        return cwa_admin
+        
+#principal form
+class PrincipalForm(CustomUserForm):
+    class Meta(CustomUserForm.Meta):
+        model = Principal
+        fields = CustomUserForm.Meta.fields + ['school', 'grades', 'subjects']  # ✅ ManyToMany fields
+
+    def __init__(self, *args, **kwargs):
+        super(PrincipalForm, self).__init__(*args, **kwargs)
+        
+        self.fields['school'] = forms.ModelChoiceField(
+            queryset=School.objects.all(),
+            required=True,
+            label="School"
+        )
+        
+        self.fields['grades'] = forms.ModelMultipleChoiceField(  # ✅ Multiple selection
+            queryset=Grade.objects.all(),
+            required=True,
+            widget=forms.CheckboxSelectMultiple,
+            label="Grades Taught"
+        )
+        
+        self.fields['subjects'] = forms.ModelMultipleChoiceField(  # ✅ Multiple selection
+            queryset=Subject.objects.all(),
+            required=True,
+            widget=forms.CheckboxSelectMultiple,
+            label="Subjects Taught"
+        )
+
+        for field in self.fields.values():
+            if not isinstance(field.widget, forms.CheckboxSelectMultiple):
+                field.widget.attrs['class'] = 'form-control'
+
+#principal edit form
+class PrincipalEditForm(forms.ModelForm):
+    class Meta:
+        model = Principal
+        fields = ['school', 'grades', 'subjects']
+        widgets = {
+            'admin': forms.HiddenInput(),  # Keep the admin field hidden
+        }
+
+    # Custom fields for the CustomUser associated with Principal
+    first_name = forms.CharField(max_length=30, required=True)
+    last_name = forms.CharField(max_length=30, required=True)
+    email = forms.EmailField(required=True)
+    address = forms.CharField(widget=forms.Textarea, required=False)
+    gender = forms.ChoiceField(choices=[('M', 'Male'), ('F', 'Female'), ('O', 'Other')], required=False)
+    profile_pic = forms.ImageField(required=False)
+
+    def __init__(self, *args, **kwargs):
+        super(PrincipalEditForm, self).__init__(*args, **kwargs)
+        
+        # Set initial values from the associated CustomUser
+        if self.instance and self.instance.pk:
+            self.fields['first_name'].initial = self.instance.admin.first_name
+            self.fields['last_name'].initial = self.instance.admin.last_name
+            self.fields['email'].initial = self.instance.admin.email
+            self.fields['address'].initial = self.instance.admin.address
+            self.fields['gender'].initial = self.instance.admin.gender
+            self.fields['profile_pic'].initial = self.instance.admin.profile_pic
+
+        # Configure the ManyToMany fields with checkboxes
+        self.fields['grades'] = forms.ModelMultipleChoiceField(
+            queryset=Grade.objects.all(),
+            required=True,
+            widget=forms.CheckboxSelectMultiple,
+            label="Grades Taught"
+        )
+        
+        self.fields['subjects'] = forms.ModelMultipleChoiceField(
+            queryset=Subject.objects.all(),
+            required=True,
+            widget=forms.CheckboxSelectMultiple,
+            label="Subjects Taught"
+        )
+
+        # Bootstrap styling
+        for field in self.fields.values():
+            if not isinstance(field.widget, (forms.CheckboxSelectMultiple, forms.HiddenInput)):
+                field.widget.attrs['class'] = 'form-control'
+
+    def save(self, commit=True):
+        principal = super(PrincipalEditForm, self).save(commit=False)
+        admin = principal.admin
+        
+        # Update the CustomUser fields
+        admin.first_name = self.cleaned_data['first_name']
+        admin.last_name = self.cleaned_data['last_name']
+        admin.email = self.cleaned_data['email']
+        admin.address = self.cleaned_data['address']
+        admin.gender = self.cleaned_data['gender']
+        
+        if 'profile_pic' in self.cleaned_data and self.cleaned_data['profile_pic']:
+            admin.profile_pic = self.cleaned_data['profile_pic']
+        
+        if commit:
+            admin.save()  # Save the CustomUser instance
+            principal.save()  # Save the Principal instance
+            # Save the many-to-many relationships
+            self.save_m2m()
+
+        return principal
+
+#cwa_admin edit form
 class CWA_AdminForm(CustomUserForm):
     def __init__(self, *args, **kwargs):
         super(CWA_AdminForm, self).__init__(*args, **kwargs)
@@ -175,87 +490,6 @@ class CWA_AdminForm(CustomUserForm):
         model = CWA_Admin
         fields = CustomUserForm.Meta.fields + ['school', 'collegeanduniversity', 'bursary', 'session', 'term']
 
-#parent form
-class ParentForm(CustomUserForm):
-    def __init__(self, *args, **kwargs):
-        super(ParentForm, self).__init__(*args, **kwargs)
-        
-        # Make specific fields required
-        self.fields['school'].required = True
-        self.fields['student'].required = True
-
-        # Optional: Add Bootstrap styling
-        for field_name, field in self.fields.items():
-            field.widget.attrs['class'] = 'form-control'
-
-    class Meta(CustomUserForm.Meta):
-        model = Parent
-        fields = CustomUserForm.Meta.fields + ['school', 'student', 'grade', 'session', 'term']
-
-#principal form
-class PrincipalForm(CustomUserForm):
-    def __init__(self, *args, **kwargs):
-        super(PrincipalForm, self).__init__(*args, **kwargs)
-        
-        # Make specific fields required
-        self.fields['circuit'].required = True
-        self.fields['school'].required = True
-        self.fields['grade'].required = True
-
-        # Optional: Add Bootstrap styling
-        for field_name, field in self.fields.items():
-            field.widget.attrs['class'] = 'form-control'
-
-    class Meta(CustomUserForm.Meta):
-        model = Principal
-        fields = CustomUserForm.Meta.fields + ['circuit', 'school', 'grade', 'subject', 'term', 'course']
-
-
-#principal edit form
-class PrincipalEditForm(forms.ModelForm):
-    class Meta:
-        model = Principal
-        fields = ['admin', 'circuit', 'school']
-        widgets = {
-            'admin': forms.HiddenInput(),  # Keep the admin field hidden
-        }
-
-    # Custom fields for the CustomUser associated with Principal
-    first_name = forms.CharField(max_length=30, required=True)
-    last_name = forms.CharField(max_length=30, required=True)
-    address = forms.CharField(widget=forms.Textarea, required=False)
-    gender = forms.ChoiceField(choices=[('M', 'Male'), ('F', 'Female'), ('O', 'Other')], required=False)
-    profile_pic = forms.ImageField(required=False)
-
-    def __init__(self, *args, **kwargs):
-        super(PrincipalEditForm, self).__init__(*args, **kwargs)
-        if 'instance' in kwargs:
-            self.fields['first_name'].initial = kwargs['instance'].admin.first_name
-            self.fields['last_name'].initial = kwargs['instance'].admin.last_name
-            self.fields['address'].initial = kwargs['instance'].admin.address
-            self.fields['gender'].initial = kwargs['instance'].admin.gender
-            self.fields['profile_pic'].initial = kwargs['instance'].admin.profile_pic
-
-    def save(self, commit=True):
-        principal = super(PrincipalEditForm, self).save(commit=False)
-        admin = principal.admin
-        
-        # Update the CustomUser fields
-        admin.first_name = self.cleaned_data['first_name']
-        admin.last_name = self.cleaned_data['last_name']
-        admin.address = self.cleaned_data['address']
-        admin.gender = self.cleaned_data['gender']
-        
-        if 'profile_pic' in self.cleaned_data and self.cleaned_data['profile_pic']:
-            admin.profile_pic = self.cleaned_data['profile_pic']
-        
-        if commit:
-            admin.save()  # Save the CustomUser instance
-            principal.save()  # Save the Principal instance
-
-        return principal
-
-#cwa_admin edit form
 class CWA_AdminEditForm(forms.ModelForm):
     class Meta:
         model = CWA_Admin
@@ -302,16 +536,13 @@ class CWA_AdminEditForm(forms.ModelForm):
         return principal
     
 #circuit manager
-class Circuit_ManagerForm(CustomUserForm):
+class CircuitManagerEditForm(CustomUserForm):
     def __init__(self, *args, **kwargs):
-        super(Circuit_ManagerForm, self).__init__(*args, **kwargs)
+        super(CircuitManagerEditForm, self).__init__(*args, **kwargs)
 
     class Meta(CustomUserForm.Meta):
         model = Circuit_Manager
-        fields = CustomUserForm.Meta.fields + \
-            ['circuit']
-    #attendancereport, subject, course, session, term, student, educator, parent, principal, member, studentresult, 
-
+        fields = CustomUserForm.Meta.fields
 
 #termform
 class TermForm(forms.ModelForm):
@@ -344,7 +575,7 @@ class StaffForm(CustomUserForm):
     class Meta(CustomUserForm.Meta):
         model = Staff
         fields = CustomUserForm.Meta.fields + \
-            ['course' ]
+            ['school' ]
 
 
 #courseform
@@ -503,31 +734,43 @@ class SchoolForm(forms.ModelForm):
     class Meta:
         model = School
         fields = [
-            'circuit',  # ✅ Add this
             'emis', 'name', 'contact', 'phase', 'sector', 'educators_on_db',
             'school_type', 'school_term', 'logo', 'head_principal', 'deputy',
             'filter_by', 'website_url', 'email', 'whatsapp_number', 'grade',
-            'address', 'year', 'count'
+            'circuit', 'address', 'year', 'count'
         ]
         widgets = {
-            'circuit': forms.Select(attrs={'class': 'form-control'}),  # ✅ Add widget
             'emis': forms.TextInput(attrs={'class': 'form-control'}),
             'name': forms.TextInput(attrs={'class': 'form-control'}),
+            'contact': forms.TextInput(attrs={'class': 'form-control'}),
             'phase': forms.TextInput(attrs={'class': 'form-control'}),
             'sector': forms.TextInput(attrs={'class': 'form-control'}),
             'educators_on_db': forms.NumberInput(attrs={'class': 'form-control'}),
+
+            # Correct: Model has choices
             'school_type': forms.Select(attrs={'class': 'form-control'}),
-            'school_term': forms.TextInput(attrs={'class': 'form-control'}),
             'filter_by': forms.Select(attrs={'class': 'form-control'}),
-            'website_url': forms.TextInput(attrs={'class': 'form-control'}),
+
+            # Correct widget for IntegerField (no choices)
+            'school_term': forms.NumberInput(attrs={'class': 'form-control'}),
+
+            'logo': forms.FileInput(attrs={'class': 'form-control'}),
+            'head_principal': forms.TextInput(attrs={'class': 'form-control'}),
+            'deputy': forms.TextInput(attrs={'class': 'form-control'}),
+
+            'website_url': forms.URLInput(attrs={'class': 'form-control'}),
             'email': forms.EmailInput(attrs={'class': 'form-control'}),
             'whatsapp_number': forms.TextInput(attrs={'class': 'form-control'}),
-            'contact': forms.TextInput(attrs={'class': 'form-control'}),
-            'address': forms.TextInput(attrs={'class': 'form-control'}),
+
+            # FIXED: TextField → Textarea
+            'address': forms.Textarea(attrs={'class': 'form-control', 'rows': 3}),
+
+            'grade': forms.Select(attrs={'class': 'form-control'}),
+            'circuit': forms.Select(attrs={'class': 'form-control'}),
+
             'year': forms.NumberInput(attrs={'class': 'form-control'}),
             'count': forms.NumberInput(attrs={'class': 'form-control'}),
         }
-        
         
 #school dashboard phase
 class SchoolEditForm(forms.ModelForm):
@@ -536,26 +779,6 @@ class SchoolEditForm(forms.ModelForm):
         fields = ['name', 'logo', 'head_principal', 'deputy', 'school_type', 'filter_by', 'website_url', 'email', 'grade', 'whatsapp_number', 'address', 'year']
 
 
-
-#circuit sytem
-#circuit form
-class CircuitForm(forms.ModelForm):
-    class Meta:
-        model = Circuit
-        fields = [
-            'name', 'contact', 'email', 'whatsapp_number', 'address',
-            
-        ]
-        widgets = {
-            'name': forms.TextInput(attrs={'class': 'form-control'}),
-            'contact': forms.TextInput(attrs={'class': 'form-control'}),
-            'circuit_manager': forms.TextInput(attrs={'class': 'form-control'}),
-            'email': forms.EmailInput(attrs={'class': 'form-control'}),  # Email field
-            'whatsapp_number': forms.TextInput(attrs={'class': 'form-control'}),
-            'address': forms.TextInput(attrs={'class': 'form-control'}),
-        }
-
- 
 # documents upload
 class AppointmentForm(forms.ModelForm):
     class Meta:
@@ -639,62 +862,32 @@ class CustomPasswordResetForm(forms.Form):
             raise forms.ValidationError("No user with this email address found.")
         return email
 
-#comments
-class CommentForm(forms.ModelForm):
+
+class NewsAndEventsForm(forms.ModelForm):
     class Meta:
-        model = Comment
-        fields = ['content']
+        model = NewsAndEvents
+        fields = ['title', 'summary', 'posted_as', 'image']
         widgets = {
-            'content': forms.Textarea(attrs={'rows': 3, 'class': 'form-control', 'placeholder': 'Add a comment...'}),
+            'title': forms.TextInput(attrs={'class': 'form-control'}),
+            'summary': forms.Textarea(attrs={'class': 'form-control'}),
+            'posted_as': forms.Select(attrs={'class': 'form-control'}),
+            'image': forms.ClearableFileInput(attrs={'class': 'form-control'}),
         }
 
-class ReplyForm(forms.ModelForm):
-    class Meta:
-        model = Comment
-        fields = ['content']
-        widgets = {
-            'content': forms.Textarea(attrs={'rows': 2, 'class': 'form-control', 'placeholder': 'Write a reply...'}),
-        }
+class UploadExcelForm(forms.Form):
+    file = forms.FileField(label="Upload Excel File")
 
-
-#documents
-class DocumentUploadForm(forms.ModelForm):
-    class Meta:
-        model = Document
-        fields = ['title', 'description', 'file']
-        widgets = {
-            'file': forms.FileInput(attrs={'accept': '.pdf,.doc,.docx,.ppt,.pptx,.txt'})
-        }
-
-class RequestForm(forms.ModelForm):
-    class Meta:
-        model = PaperRequest
-        fields = ['request_type', 'description', 'guest_email']
-
-#AI communication
-class DeepSeekChatForm(forms.Form):
-    question = forms.CharField(
-        widget=forms.Textarea(attrs={
-            'class': 'form-control',
-            'placeholder': 'Ask me anything about education, schools, or your CMS...',
-            'rows': 3
-        }),
-        max_length=1000
+#course form
+class CourseExcelUploadForm(forms.Form):
+    excel_file = forms.FileField(
+        label='Excel File',
+        widget=forms.FileInput(attrs={'class': 'form-control'})
     )
 
-#messages form
-
-#messages
-class MessageForm(forms.ModelForm):
-    class Meta:
-        model = Message
-        fields = ['text', 'reply_to']  # 'text' for the message, media will be handled separately
-        widgets = {
-            'text': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'Type a message...'}),
-            'reply_to': forms.HiddenInput(),
-        }
-
-    media_files = forms.FileField(
-        widget=forms.ClearableFileInput(attrs={'allow_multiple_selected': True}),
-        required=False
+#subject upload form
+class SubjectExcelUploadForm(forms.Form):
+    excel_file = forms.FileField(
+        label="Upload Excel File",
+        widget=forms.FileInput(attrs={'class': 'form-control'})
     )
+

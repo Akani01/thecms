@@ -6,7 +6,9 @@ from .forms import *
 # Parent Home
 def parent_home(request):
     parent = get_object_or_404(Parent, admin=request.user)
-    total_attendance_reports = AttendanceReport.objects.filter(student=parent.student).count()
+    students = parent.student.all()  # Get all linked students
+
+    total_attendance_reports = AttendanceReport.objects.filter(student__in=students).count()
     items = NewsAndEvents.objects.all().order_by("-updated_date")
 
     context = {
@@ -14,6 +16,8 @@ def parent_home(request):
         "items": items,
         'page_title': 'Parent Dashboard',
         'total_attendance_reports': total_attendance_reports,
+        'students': students,  # Pass to template
+        'parent': parent,
     }
     return render(request, 'parent_template/home_content.html', context)
 

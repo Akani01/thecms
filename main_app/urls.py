@@ -14,13 +14,55 @@ Including another URLconf
     2. Add a URL to urlpatterns:  path('blog/', include('blog.urls'))
 """
 from django.urls import path
+from django.views.generic import TemplateView
 from main_app.EditResultView import EditResultView
 from django.contrib.auth import views as auth_views
-from . import hod_views, staff_views, parent_views, member_views, educator_views, circuit_manager_views, student_views, principal_views, views
+from . import hod_views, staff_views, parent_views, member_views, educator_views, circuit_manager_views, student_views, principal_views, cwa_admin_views, views
 from .views import *
+from django.contrib.sitemaps.views import sitemap
+from .sitemaps import *
+
+
+sitemaps = {
+    # Dynamic content
+    'jobs': JobSitemap,
+    'bursaries': BursarySitemap,
+    'colleges': CollegeSitemap,
+    'news': NewsSitemap,
+    'videos': VideoSitemap,
+    'questionpapers': QuestionPaperSitemap,
+    'schools': SchoolSitemap,
+    'photos': PhotoSitemap,
+    'prospectors': ProspectorSitemap,
+    'sos': SOSSitemap,
+    
+    # Static pages
+    'static': StaticViewSitemap,
+    'highpriority': HighPriorityStaticSitemap,
+    'sections': SectionSitemap,
+    
+    # User content
+    'profiles': UserProfileSitemap,
+    
+    # Feeds
+    'feeds': RSSFeedSitemap,
+}
+
 
 urlpatterns = [
     path('', views.index_view, name='index'),
+    #APPLICATION SITEMAP
+    # PWA URLs
+    # Manifest URL 
+    # PWA URLs
+    path('manifest.json', views.manifest_view, name='manifest'),
+    path('serviceworker.js', views.service_worker_view, name='serviceworker'),
+    path('offline/', views.offline_view, name='offline'),
+    # End
+    path('sitemap.xml', sitemap, {'sitemaps': sitemaps}, 
+         name='django.contrib.sitemaps.views.sitemap'),
+    #icons
+    path('favicon.ico', views.favicon, name='favicon'),
     path("login", views.login_page, name='login_page'),
     path("news/", hod_views.post_add, name="news"),
     path("item/<int:pk>/edit/", hod_views.edit_post, name="edit_post"),
@@ -125,6 +167,9 @@ urlpatterns = [
     #edit the cwa_admin portal
     path("cwa_admin/edit/<int:cwa_admin_id>",
          hod_views.edit_cwa_admin, name='edit_cwa_admin'),
+   
+    path('cwa-admin/home/', cwa_admin_views.cwa_admin_home, name='cwa_admin'),
+   
     #cwa----end
     path("course/edit/<int:course_id>",
          hod_views.edit_course, name='edit_course'),
@@ -163,8 +208,13 @@ urlpatterns = [
     path('staff/result/fetch/', staff_views.fetch_student_result,
          name='fetch_student_result'),
 
-
- 
+    #circuits
+    path('circuit_gallery/', views.circuitGallery, name='circuit_gallery'),
+    path('circuit/<int:pk>/', views.viewCircuit, name='view_circuit'),
+    path('add/', views.addCircuit, name='add_circuit'),
+    path('edit/<int:pk>/', views.editCircuit, name='edit_circuit'),
+    path('delete/<int:pk>/', views.deleteCircuit, name='delete_circuit'),
+  
     # Student
     path("student/home/", student_views.student_home, name='student_home'),
     path("student/view/attendance/", student_views.student_view_attendance,
@@ -191,7 +241,8 @@ urlpatterns = [
          name='question_paper_list'),
     path('question-papers/<int:pk>/', student_views.question_paper_detail, 
          name='question_paper_detail'),
-
+    #subject
+    path('subjects/upload-excel/', views.upload_subjects_from_excel, name='upload_subjects_from_excel'),
     #principal
     path('principal/home/', principal_views.principal_home, name='principal_home'),
     path('principal/view_attendance/', principal_views.principal_view_attendance, name='principal_view_attendance'),
@@ -368,20 +419,21 @@ urlpatterns = [
     path("password_reset/", views.custom_password_reset_request, name="password_reset_request"),
     path("password_reset/done/", custom_password_reset_done, name="custom_password_reset_done"),
     path("reset/<uidb64>/<token>/", views.custom_password_reset_confirm, name="password_reset_confirm"),
-    #circuits
-    path('circuit_gallery/', views.circuitGallery, name='circuit_gallery'),
-    path('circuit/<int:pk>/', views.viewCircuit, name='view_circuit'),
-    path('edit-circuit/<int:pk>/', views.editCircuit, name='edit_circuit'),
-    path('add_circuit/', views.addCircuit, name='add_circuit'),
-    path('delete/<int:pk>/', views.deleteCircuit, name='delete_circuit'),
-    path('no-access/', views.no_access_view, name='no_access'),
-    #coment and reply sections
-    path('add-comment/', views.add_comment, name='add_comment'),
-    path('add-reply/', views.add_reply, name='add_reply'),
-    path('toggle-like/', views.toggle_like, name='toggle_like'),
-    #documents and help sections
-    # ..documents and communication ...
-    path('upload-document/', views.upload_document, name='upload_document'),
-    path('download/<int:document_id>/', views.download_document, name='download_document'),
-    path('request-help/', views.submit_request, name='submit_request'),
+    #UPLOADING AND VIEWING SCHOOLS FROM EXCEL
+    path('upload-schools/', views.upload_schools_from_excel, name='upload_schools'),
+    #videos
+    path('videos/', views.videos_view, name='videos'),
+    path('videos/add/', views.video_add_view, name='video_add'),
+    path('videos/<int:video_id>/', views.show_video, name='show_video'),
+    
+    # AJAX endpoints for likes and comments
+    path('videos/<int:video_id>/like/', views.like_video, name='like_video'),
+    path('videos/<int:video_id>/comment/', views.add_comment, name='add_comment'),
+    path('videos/<int:video_id>/comments/', views.get_comments, name='get_comments'),
+    #question paper upload
+    path('upload-question-paper/', educator_views.upload_question_paper, name='upload_question_paper'),
+    path('question-papers/', educator_views.question_paper_list, name='questionpaperlist'),
+    path('question-paper/<int:pk>/', educator_views.question_paper_detail, name='question_paper_detail'),
+    #Course
+    path('upload-excel/', hod_views.upload_courses_from_excel, name='upload_courses_excel'),
 ]

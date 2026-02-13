@@ -38,7 +38,7 @@ def college_add_view(request):
 
             # Email content
             subject = f"New University Added: {college.title}"
-            listview_url = "https://www.thecms.co.za/collegecolleges/"
+            listview_url = "https://www.elimcircuit.com/collegecolleges/"
             raw_message = (
                 f"A new university '{college.title}' has just been added to the platform. "
                 f"<br><br>Check it out here 👉 <a href='{listview_url}'>{listview_url}</a>"
@@ -97,5 +97,9 @@ def college_update_view(request, pk):
 def college_delete_view(request, pk):
     college = get_object_or_404(CollegeAndUniversities, pk=pk)
     college.delete()
-    messages.success(request, "College/University deleted successfully.")
+    messages.success(request, "college/University deleted successfully.")
     return redirect("college_list")
+
+def college_detail(request, pk):
+    college = get_object_or_404(CollegeAndUniversities, pk=pk)
+    return render(request, 'college/college_detail.html', {'college': college})

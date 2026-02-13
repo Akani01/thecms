@@ -13,11 +13,12 @@ https://docs.djangoproject.com/en/5.0/ref/settings/
 import os
 from pathlib import Path
 from dotenv import load_dotenv
-import django_heroku
 import dj_database_url
 from decouple import config
+from datetime import timedelta
 
 load_dotenv()
+
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
 
@@ -26,16 +27,43 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 # See https://docs.djangoproject.com/en/5.0/howto/deployment/checklist/
 
 # SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = 'SECRET_KEY'
+SECRET_KEY = os.environ.get('SECRET_KEY', 'SECRET_KEY')
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
+DEBUG = os.environ.get('DEBUG', 'True').lower() == 'true'
 
-ALLOWED_HOSTS = ['thecms-f39b5877166c.herokuapp.com/', '127.0.0.1', 'thecms.co.za', 'www.thecms.co.za' 'www.thecms.com', 'thecms.com',]
+# Allow all hosts during development
+ALLOWED_HOSTS = [
+    "thecms.co.za",
+    "www.thecms.co.za",
+    "elimcircuit.com",
+    "www.elimcircuit.com",
+    ".railway.app",
+    ".herokuapp.com",
+    "localhost",
+    "127.0.0.1",
+]
 
+# CSRF Settings
+CSRF_TRUSTED_ORIGINS = [
+    "https://thecms.co.za",
+    "https://www.thecms.co.za",
+    "https://elimcircuit.com",
+    "https://www.elimcircuit.com",
+    "https://*.railway.app",
+    "https://*.herokuapp.com",
+    "http://localhost:8000",
+    "http://127.0.0.1:8000",
+    "http://localhost:5173",
+    "http://127.0.0.1:5173",
+]
+
+CSRF_COOKIE_HTTPONLY = False
+CSRF_COOKIE_SECURE = True
+CSRF_COOKIE_SAMESITE = "Lax"
+SESSION_COOKIE_SECURE = True
 
 # Application definition
-
 INSTALLED_APPS = [
     "django_extensions",
     'django.contrib.admin',
@@ -48,11 +76,17 @@ INSTALLED_APPS = [
     "crispy_bootstrap5",
     "rest_framework",
     "django_filters",
-    #allauthentication
+    # allauthentication
     'allauth',
     'allauth.account',
     'allauth.socialaccount',
     'django.contrib.sites',
+    # SEO optimized
+    'django.contrib.sitemaps',
+    # advance integrations
+    'rest_framework_simplejwt',
+    'channels',
+    'corsheaders',
     # My Apps
     'quiz',
     'result',
@@ -63,11 +97,11 @@ INSTALLED_APPS = [
     'application',
     'job',
     'main_app.apps.MainAppConfig',
-    #aws database
+    # aws database
     'storages',
-    
-
-    # ... include the providers you want to enable:
+    # pwa
+    'hiring',
+    # social providers
     'allauth.socialaccount.providers.google',
     'allauth.socialaccount.providers.github',
     'allauth.socialaccount.providers.facebook',
@@ -75,11 +109,12 @@ INSTALLED_APPS = [
     'allauth.socialaccount.providers.apple',
     'allauth.socialaccount.providers.amazon',
     'allauth.socialaccount.providers.twitter',
-    # ...End
 ]
 
 MIDDLEWARE = [
+    'corsheaders.middleware.CorsMiddleware',
     'django.middleware.security.SecurityMiddleware',
+    'whitenoise.middleware.WhiteNoiseMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
@@ -87,15 +122,68 @@ MIDDLEWARE = [
     'django.contrib.messages.middleware.MessageMiddleware',
     'allauth.account.middleware.AccountMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
-    # Third Part Middleware
-    'whitenoise.middleware.WhiteNoiseMiddleware',
-
-    # My Middleware
     'main_app.middleware.LoginCheckMiddleWare',
 ]
 
-ROOT_URLCONF = 'school.urls'
+# PWA Settings
+PWA_APP_NAME = 'Tolleya The Great'
+PWA_APP_DESCRIPTION = 'Educational Platform'
+PWA_APP_THEME_COLOR = '#4A90E2'
+PWA_APP_BACKGROUND_COLOR = '#ffffff'
+PWA_APP_DISPLAY = 'standalone'
+PWA_APP_SCOPE = '/'
+PWA_APP_ORIENTATION = 'portrait'
+PWA_APP_START_URL = '/'
+PWA_APP_STATUS_BAR_COLOR = 'default'
+PWA_APP_ICONS = [
+    {'src': '/static/icons/icon-72x72.png', 'sizes': '72x72', 'type': 'image/png'},
+    {'src': '/static/icons/icon-96x96.png', 'sizes': '96x96'},
+    {'src': '/static/icons/icon-128x128.png', 'sizes': '128x128'},
+    {'src': '/static/icons/icon-144x144.png', 'sizes': '144x144'},
+    {'src': '/static/icons/icon-152x152.png', 'sizes': '152x152'},
+    {'src': '/static/icons/icon-192x192.png', 'sizes': '192x192'},
+    {'src': '/static/icons/icon-384x384.png', 'sizes': '384x384'},
+    {'src': '/static/icons/icon-512x512.png', 'sizes': '512x512'}
+]
+PWA_SERVICE_WORKER_PATH = os.path.join(BASE_DIR, 'assets', 'js', 'serviceworker.js')
 
+# CORS settings
+CORS_ALLOWED_ORIGINS = [
+    "http://localhost:5173",
+    "https://elimcircuit.com",
+    "https://www.elimcircuit.com",
+]
+
+# Django REST Framework
+REST_FRAMEWORK = {
+    'DEFAULT_AUTHENTICATION_CLASSES': (
+        'rest_framework_simplejwt.authentication.JWTAuthentication',
+        'rest_framework.authentication.SessionAuthentication',
+        'rest_framework.authentication.BasicAuthentication',
+    ),
+    'DEFAULT_PERMISSION_CLASSES': [
+        'rest_framework.permissions.IsAuthenticated',
+    ],
+}
+
+# JWT Settings
+SIMPLE_JWT = {
+    'ACCESS_TOKEN_LIFETIME': timedelta(minutes=60),
+    'REFRESH_TOKEN_LIFETIME': timedelta(days=7),
+}
+
+# Channels + Redis
+ASGI_APPLICATION = 'school.asgi.application'
+CHANNEL_LAYERS = {
+    'default': {
+        'BACKEND': 'channels_redis.core.RedisChannelLayer',
+        'CONFIG': {
+            "hosts": [('thecms.co.za', 6379)],
+        },
+    },
+}
+
+ROOT_URLCONF = 'school.urls'
 
 TEMPLATES = [
     {
@@ -113,188 +201,122 @@ TEMPLATES = [
     },
 ]
 
-
 CART_SESSION_ID = 'cart'
 SESSION_COOKIE_AGE = 86400
-
-AUTHENTICATION_BACKENDS = [
-    
-    # Needed to login by username in Django admin, regardless of `allauth`
-    'django.contrib.auth.backends.ModelBackend',
-
-    # `allauth` specific authentication methods, such as login by e-mail
-    'allauth.account.auth_backends.AuthenticationBackend',
-    
-]
-
 SITE_ID = 1
 
+# ============================================================================
+# DATABASE CONFIGURATION - Works on Railway, Heroku, and Local
+# ============================================================================
+# Get the primary database URL from the platform that's hosting the app
+DATABASE_URL = os.environ.get('DATABASE_URL')  # Heroku sets this
+if not DATABASE_URL:
+    DATABASE_URL = os.environ.get('RAILWAY_DATABASE_URL')  # Railway sets this
 
-
-# Database
-# https://docs.djangoproject.com/en/5.0/ref/settings/#databases
-
-
-
+# Configure the default database
 DATABASES = {
     'default': dj_database_url.config(
-        default=os.environ.get('DATABASE_URL'),
-        conn_max_age=600,
-        ssl_require=True
-    ),
-    'cms_db': dj_database_url.parse(
-        os.environ.get('CMS_DB_URL'),
+        default=DATABASE_URL,
         conn_max_age=600,
         ssl_require=True
     )
 }
 
+# OPTIONAL: Only add a secondary database if you explicitly created one
+# Set RAILWAY_SECONDARY_DB in your Railway environment if you added a second DB
+RAILWAY_SECONDARY_DB = os.environ.get('RAILWAY_SECONDARY_DB')
+if RAILWAY_SECONDARY_DB:
+    DATABASES['railway_secondary'] = dj_database_url.parse(
+        RAILWAY_SECONDARY_DB,
+        conn_max_age=600,
+        ssl_require=True
+    )
+# ============================================================================
 
-
-DATABASE_ROUTERS = ['school.database_router.CMSDatabaseRouter']
-
-#aws connected online media file
-
-#aws database
-#aes configurations
-AWS_ACCESS_KEY_ID = config("AWS_ACCESS_KEY_ID")
-AWS_SECRET_ACCESS_KEY = config("AWS_SECRET_ACCESS_KEY")
-AWS_STORAGE_BUCKET_NAME = config("AWS_STORAGE_BUCKET_NAME")
-AWS_S3_CUSTOM_DOMAIN = f"{AWS_STORAGE_BUCKET_NAME}.s3.amazonaws.com"
-
-AWS_DEFAULT_ACL = None  # Optional, makes sure no ACLs are applied
-
-
-#file overwrite
+# AWS S3 Configuration
+AWS_ACCESS_KEY_ID = os.getenv("AWS_ACCESS_KEY_ID")
+AWS_SECRET_ACCESS_KEY = os.getenv("AWS_SECRET_ACCESS_KEY")
+AWS_STORAGE_BUCKET_NAME = os.getenv("AWS_STORAGE_BUCKET_NAME")
+AWS_S3_REGION_NAME = "af-south-1"
 AWS_S3_FILE_OVERWRITE = False
-# Media storage in S3
-DEFAULT_FILE_STORAGE = 'storages.backends.s3boto3.S3Boto3Storage'
-MEDIA_URL = f'https://{AWS_S3_CUSTOM_DOMAIN}/media/'
+AWS_S3_ENDPOINT_URL = "https://s3.af-south-1.amazonaws.com"
 
+STORAGES = {
+    "default": {
+        "BACKEND": "storages.backends.s3boto3.S3Boto3Storage",
+        "OPTIONS": {
+            "access_key": AWS_ACCESS_KEY_ID,
+            "secret_key": AWS_SECRET_ACCESS_KEY,
+            "bucket_name": AWS_STORAGE_BUCKET_NAME,
+            "endpoint_url": AWS_S3_ENDPOINT_URL,
+            "region_name": AWS_S3_REGION_NAME,
+        },
+    },
+    "staticfiles": {
+        "BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage",
+    },
+}
 
-# DeepSeek API
-DEEPSEEK_API_KEY = os.getenv('DEEPSEEK_API_KEY')
-DEEPSEEK_API_URL = "https://api.deepseek.com/v1/chat/completions"  # Full API endpoint URL
-
+MEDIA_URL = f"https://{AWS_STORAGE_BUCKET_NAME}.s3.{AWS_S3_REGION_NAME}.amazonaws.com/media/"
 
 # Password validation
-# https://docs.djangoproject.com/en/3.1/ref/settings/#auth-password-validators
-
 AUTH_PASSWORD_VALIDATORS = [
-    {
-        'NAME': 'django.contrib.auth.password_validation.UserAttributeSimilarityValidator',
-    },
-    {
-        'NAME': 'django.contrib.auth.password_validation.MinimumLengthValidator',
-    },
-    {
-        'NAME': 'django.contrib.auth.password_validation.CommonPasswordValidator',
-    },
-    {
-        'NAME': 'django.contrib.auth.password_validation.NumericPasswordValidator',
-    },
+    {'NAME': 'django.contrib.auth.password_validation.UserAttributeSimilarityValidator'},
+    {'NAME': 'django.contrib.auth.password_validation.MinimumLengthValidator'},
+    {'NAME': 'django.contrib.auth.password_validation.CommonPasswordValidator'},
+    {'NAME': 'django.contrib.auth.password_validation.NumericPasswordValidator'},
 ]
 
 # Internationalization
-# https://docs.djangoproject.com/en/5.0/topics/i18n/
-
 LANGUAGE_CODE = 'en-us'
-
-TIME_ZONE = 'UTC'
-
+TIME_ZONE = 'Africa/Johannesburg'
 USE_I18N = True
-
 USE_L10N = True
-
 USE_TZ = True
 
-
-# Static files (CSS, JavaScript, Images)
-# https://docs.djangoproject.com/en/5.0/howto/static-files/
-# WhiteNoise configuration
-STATICFILES_STORAGE = "whitenoise.storage.CompressedManifestStaticFilesStorage"
-AUTH_USER_MODEL = 'main_app.CustomUser'
-AUTHENTICATION_BACKENDS = ['main_app.EmailBackend.EmailBackend']
-TIME_ZONE = 'Africa/Johannesburg'
-
-STUDENT_ID_PREFIX = config("STUDENT_ID_PREFIX", default="ugr")
-EDUCATOR_ID_PREFIX = config("EDUCATOR_ID_PREFIX", default="lec")
-
+# Static files
 STATIC_URL = 'static/'
-#django databse settings
-django_heroku.settings(locals())
 STATIC_ROOT = os.path.join(BASE_DIR, 'staticfiles')
+STATICFILES_DIRS = [os.path.join(BASE_DIR, 'static')]
+STATICFILES_STORAGE = "whitenoise.storage.CompressedStaticFilesStorage"
 
-MEDIA_URL = '/mediafiles/'
-MEDIA_ROOT = os.path.join(BASE_DIR, 'static/mediafiles')
-
-STATICFILES_STORAGE = "whitenoise.storage.CompressedStaticFilesStorage" 
-
-STATICFILES_DIRS = [
-    os.path.join(BASE_DIR, 'static')
+# Auth settings
+AUTH_USER_MODEL = 'main_app.CustomUser'
+AUTHENTICATION_BACKENDS = [
+    'main_app.EmailBackend.EmailBackend',
+    'django.contrib.auth.backends.ModelBackend',
+    'allauth.account.auth_backends.AuthenticationBackend',
 ]
 
+# ID Prefixes
+STUDENT_ID_PREFIX = os.getenv("STUDENT_ID_PREFIX", "ugr")
+EDUCATOR_ID_PREFIX = os.getenv("EDUCATOR_ID_PREFIX", "lec")
+
+# AI API Keys
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY")
+
+# Crispy Forms
 CRISPY_ALLOWED_TEMPLATE_PACKS = "bootstrap5"
 CRISPY_TEMPLATE_PACK = "bootstrap5"
 
+# Login/Logout Redirects
 LOGIN_REDIRECT_URL = "/"
 LOGOUT_REDIRECT_URL = "/"
 
-# email auntentication
-
-ACCOUNT_EMAIL_REQUIRED = True
-#email configuration
-
-SOCIALACCOUNT_PROVIDERS = {
-  'google': {
-      'EMAIL_AUTHENTICATION': True
-  }
-}
-
+# Django Allauth
 ACCOUNT_EMAIL_REQUIRED = True
 
 # Default primary key field type
-# https://docs.djangoproject.com/en/5.0/ref/settings/#default-auto-field
-
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
-#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
-
-EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
-EMAIL_HOST = 'smtp.gmail.com'
-EMAIL_HOST_USER = config("EMAIL_HOST_USER")
-EMAIL_HOST_PASSWORD = config("EMAIL_HOST_PASSWORD")
-EMAIL_PORT = 587
-EMAIL_USE_TLS = True
-EMAIL_USE_SSL = False
-DEFAULT_FROM_EMAIL = config("DEFAULT_FROM_EMAIL")
-
-DEBUG = True
-# SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
-# SECURE_SSL_REDIRECT = True
-# DRF setup
-REST_FRAMEWORK = {
-    "DEFAULT_PERMISSION_CLASSES": [
-        "rest_framework.permissions.IsAuthenticated",
-    ],
-    "DEFAULT_AUTHENTICATION_CLASSES": [
-        "rest_framework.authentication.SessionAuthentication",
-        "rest_framework.authentication.BasicAuthentication",
-    ],
-}
-
-# LOGGING
-# ------------------------------------------------------------------------------
-# https://docs.djangoproject.com/en/dev/ref/settings/#logging
-# See https://docs.djangoproject.com/en/dev/topics/logging for
-# more details on how to customize your logging configuration.
+# Logging
 LOGGING = {
     "version": 1,
     "disable_existing_loggers": False,
     "formatters": {
         "verbose": {
-            "format": "%(levelname)s %(asctime)s %(module)s "
-            "%(process)d %(thread)d %(message)s"
+            "format": "%(levelname)s %(asctime)s %(module)s %(process)d %(thread)d %(message)s"
         }
     },
     "handlers": {

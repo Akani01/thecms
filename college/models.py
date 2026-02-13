@@ -17,9 +17,7 @@ class CollegeAndUniversitiesManager(models.Manager):
     def search(self, query):
         return self.get_queryset().search(query)
 
-
-#college and university models
-
+# CollegeAndUniversities model
 class CollegeAndUniversities(models.Model):
     POST_CHOICES = [
         ('university', 'University'),
@@ -27,21 +25,39 @@ class CollegeAndUniversities(models.Model):
     ]
 
     title = models.CharField(max_length=200, null=True)
-    summary = models.TextField(max_length=200, blank=True, null=True)
+    summary = models.TextField(max_length=20000, blank=True, null=True)
     website_url = models.CharField(max_length=2000, null=True, blank=True)
     picture = models.ImageField(upload_to="profile_pictures/%y/%m/%d/", default="default.png", null=True)
     posted_as = models.CharField(choices=POST_CHOICES, max_length=10)
     updated_date = models.DateTimeField(auto_now=True)
     upload_time = models.DateTimeField(auto_now_add=True)
 
-    class Meta:
-        managed = False
-        db_table = 'college_collegeanduniversities'
+    objects = CollegeAndUniversitiesManager()
+    
+    # Picture get
+    def get_picture(self):
+        try:
+            return self.picture.url
+        except:
+            return settings.MEDIA_URL + "default.png"
+    
+    # Picture save
+    def save(self, *args, **kwargs):
+        super().save(*args, **kwargs)
+        try:
+            img = Image.open(self.picture.path)
+            if img.height > 300 or img.width > 300:
+                output_size = (300, 300)
+                img.thumbnail(output_size)
+                img.save(self.picture.path)
+        except:
+            pass
+    
+    # Picture delete
+    def delete(self, *args, **kwargs):
+        if self.picture.url != settings.MEDIA_URL + "default.png":
+            self.picture.delete()
+        super().delete(*args, **kwargs)
 
     def __str__(self):
-        return self.title or "Untitled University/College"
-
-    def get_picture_url(self):
-        if self.picture:
-            return f"{settings.MEDIA_URL}{self.picture}"
-        return f"{settings.MEDIA_URL}default.png"
+        return self.title

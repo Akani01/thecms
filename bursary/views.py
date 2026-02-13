@@ -41,7 +41,7 @@ def bursary_add_view(request):
 
             # Email content
             subject = f"New Bursary Available: {bursary.title}"
-            listview_url = "https://www.thecms.co.za/bursarybursaries/"
+            listview_url = "https://www.elimcircuit.com/bursarybursaries/"
             raw_message = (
                 f"A new bursary titled '{bursary.title}' has just been added to the platform. "
                 f"<br><br>Apply now 👉 <a href='{listview_url}'>{listview_url}</a>"
@@ -103,3 +103,8 @@ def bursary_delete_view(request, pk):
     bursary.delete()
     messages.success(request, "Bursary successfully deleted.")
     return redirect("bursary_list")
+
+
+def bursary_detail(request, pk):
+    bursary = get_object_or_404(Bursary, pk=pk)
+    return render(request, 'bursary/bursary_detail.html', {'bursary': bursary})

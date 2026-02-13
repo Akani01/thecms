@@ -16,12 +16,32 @@ Including another URLconf
 """
 from django.contrib import admin
 from django.urls import path, include
+from django.http import HttpResponse
+from django.views.generic import TemplateView
 from django.conf import settings
 from django.conf.urls.static import static
+import os
 
+
+def ads_txt_view(request):
+    ads_path = os.path.join(settings.BASE_DIR, 'static', 'ads.txt')
+    try:
+        with open(ads_path, 'r') as f:
+            return HttpResponse(f.read(), content_type='text/plain')
+    except FileNotFoundError:
+        return HttpResponse("ads.txt not found", status=404)
+    
 
 urlpatterns = [
     path("", include('main_app.urls')),
+    path("accounts/", include('allauth.urls')),
+
+    # ads.txt
+    path('ads.txt', TemplateView.as_view(
+        template_name='ads.txt',
+        content_type='text/plain'
+    )),
+
     path("result", include('result.urls')),
     path("quiz", include('quiz.urls')),
     path("job", include('job.urls')),
@@ -29,14 +49,14 @@ urlpatterns = [
     path("application", include('application.urls')),
     path("photo", include('photo.urls')),
     path("college", include('college.urls')),
+    path("hiring/", include('hiring.urls')),
+    path('api/', include('hiring.urls')),
     path("bursary", include('bursary.urls')),
     path("accounts/", include("django.contrib.auth.urls")),
     path('admin/', admin.site.urls),
-    
 ]
 
 
 if settings.DEBUG:
     urlpatterns += static(settings.STATIC_URL, document_root=settings.STATIC_ROOT)
-    urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
 

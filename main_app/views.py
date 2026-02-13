@@ -1,15 +1,18 @@
 import json
 import requests
+from django.http import JsonResponse
+from django.views.decorators.http import require_POST
+from django.views.decorators.csrf import csrf_exempt
 from django.contrib import messages
 from django.contrib.auth import authenticate, login, logout
 from django.http import HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render, reverse
 from django.views.decorators.csrf import csrf_exempt
-from django.views.decorators.http import require_POST
 from django.contrib.auth.decorators import login_required
-from django.views.decorators.http import require_POST
 from django.template.loader import get_template 
 from .EmailBackend import EmailBackend
+import pandas as pd
+import numpy as np
 from django.views.generic import ListView
 from college.models import CollegeAndUniversities
 from django.core.mail import send_mail
@@ -26,7 +29,10 @@ from main_app.models import School, Grade, Term, Subject, Educator
 from django.views import generic
 from django.views.generic import DetailView
 from django.views import View
+import pandas as pd
+import numpy as np
 from photo.models import Photo
+from job.models import Job, Category
 from bursary.forms import BursaryForm
 from django.core.mail import send_mail
 from django.views.generic import TemplateView
@@ -38,445 +44,119 @@ from django.core.mail import EmailMessage
 from django.db.models import Q
 from questpaper.models import *
 from django.contrib.auth import get_user_model
-from utils.deepseek_edu import get_education_context, get_deepseek_response
+from django.http import FileResponse
+from django.conf import settings
+import os
 
 
-#index view
+
+def manifest_view(request):
+    """Serve the manifest.json file"""
+    context = {
+        'static_url': '/static/'
+    }
+    manifest_content = render_to_string('manifest.json', context, request=request)
+    return HttpResponse(manifest_content, content_type='application/json')
+
+def service_worker_view(request):
+    """Serve the service worker file"""
+    sw_content = render_to_string('serviceworker.js', {}, request=request)
+    return HttpResponse(sw_content, content_type='application/javascript')
+
+def offline_view(request):
+    """Offline page"""
+    return render(request, 'offline.html')
+
+
+
+def favicon(request):
+    # Adjust the path if your static folder is somewhere else
+    path = os.path.join(settings.BASE_DIR, 'static', 'images', 'logo.png')
+    return FileResponse(open(path, 'rb'), content_type='image/png')
+
 def index_view(request):
-    # Existing data fetching
-    news_items = NewsAndEvents.objects.using('cms_db').all()
-    bursaries = Bursary.objects.using('cms_db').all()
-    colleges = CollegeAndUniversities.objects.using('cms_db').all()
-    prospectors = Prospectors.objects.using("cms_db").all()
+    # Fetch data from the theblog app models
+    news_items = NewsAndEvents.objects.all().order_by("-updated_date")
+    bursaries = Bursary.objects.all().order_by("-upload_time")
+    school_dashboard = School.objects.all().order_by("name")
+    colleges = CollegeAndUniversities.objects.all().order_by("-upload_time")
     schools = School.objects.all()
-    question_papers = QuestionPaper.objects.using('cms_db').all()
+
+    # Question paper model
+    question_papers = QuestionPaper.objects.all()
     departments = Department.objects.all()
-    grades = Grade.objects.using('cms_db').all()
+    grades = Grade.objects.all()
     terms = Term.objects.all()
     photos = Photo.objects.filter(approval_status='approved')
-
-    # Form handling
-    appointment_form = AppointmentForm(request.POST or None)
-    subscription_form = SubscriptionForm(request.POST or None)
     
-    if request.method == 'POST':
-        # Existing form handling
-        if 'appointment_submit' in request.POST and appointment_form.is_valid():
+    # Jobs (added here)
+    jobs = Job.objects.all().order_by("-id")
+    categories = Category.objects.all()
+    
+    # Videos - ADD THESE LINES
+    video_categories = VideoCategory.objects.all()
+    videos = Video.objects.select_related('category', 'author').order_by('-date_posted')[:6]  # Limit to 6 latest videos
+
+    # Appointment form submission
+    if request.method == 'POST' and 'appointment_submit' in request.POST:
+        appointment_form = AppointmentForm(request.POST)
+        if appointment_form.is_valid():
             appointment_form.save()
-            messages.success(request, "Appointment booked successfully!")
+            messages.success(request, "Thank you for your submission. An appointment has been booked!")
             return redirect('index')
-            
-        if 'subscribe_submit' in request.POST and subscription_form.is_valid():
+    else:
+        appointment_form = AppointmentForm()
+
+    # Subscription form submission
+    if request.method == 'POST' and 'subscribe_submit' in request.POST:
+        subscription_form = SubscriptionForm(request.POST)
+        if subscription_form.is_valid():
             email = subscription_form.cleaned_data['email']
             if not Subscription.objects.filter(email=email).exists():
                 subscription_form.save()
-                messages.success(request, "Subscription successful!")
+                messages.success(request, "You have successfully subscribed!")
             else:
-                messages.warning(request, "Email already subscribed.")
+                messages.warning(request, "This email is already subscribed.")
             return redirect('index')
-        
+    else:
+        subscription_form = SubscriptionForm()
 
-    # Enhanced AI Assistant Integration
-    chat_form = DeepSeekChatForm(request.POST or None)
-    chat_response = None
-    question_type = request.POST.get('question_type', 'general')
-    
-    if request.method == 'POST' and 'ask_question' in request.POST and chat_form.is_valid():
-        question = chat_form.cleaned_data['question']
-        
-        # Get context-aware prompt based on question type
-        prompt = get_education_context(question_type, question, request)
-        
-        # Get response from DeepSeek API
-        chat_response = get_deepseek_response(prompt)
-        
-        # Log the interaction
-        AIChatLog.objects.create(
-            user=request.user if request.user.is_authenticated else None,
-            ip_address=request.META.get('REMOTE_ADDR', ''),
-            question_type=question_type,
-            question=question,
-            response=chat_response[:2000]  # Truncate very long responses
-        )
+    # Fetch subscription data
+    subscriptions = Subscription.objects.all()
 
-    # Comment system with guest access
-    comments = Comment.objects.filter(parent__isnull=True).order_by('-created_at')
-    comment_form = CommentForm(request.POST or None)
-    reply_form = ReplyForm(request.POST or None)
-    
-    # Document sharing system
-    documents = Document.objects.filter(approved=True).order_by('-uploaded_at')
-    document_form = DocumentUploadForm(request.POST or None, request.FILES or None)
-    request_form = RequestForm(request.POST or None)
-
+    # Context data - ADD VIDEOS TO CONTEXT
     context = {
-        # Existing context
         "schools": schools,
+        "title": "News & Events",
         "news_items": news_items,
+        "school_dashboard": school_dashboard,
         "bursaries": bursaries,
         "colleges": colleges,
-        # Include the message form and messages
-       
-        # Corrected lines
-        "message_form": MessageForm(),
-        "messages": Message.objects.all().order_by('-timestamp'),
-
-        #end
-        "question_papers": question_papers,
-        "departments": departments,
-        "grades": grades,
-        "terms": terms,
-        "photos": photos,
-        "prospectors": prospectors,
+        'question_papers': question_papers,
+        'departments': departments,
+        'grades': grades,
+        'terms': terms,
         "appointment_form": appointment_form,
         "subscription_form": subscription_form,
-        "subscriptions": Subscription.objects.all(),
-        
-        # Counts
+        "subscriptions": subscriptions,
+        "photos": photos,
+        "jobs": jobs,
+        "categories": categories,
+        # Add videos to context
+        "videos": videos,
+        "video_categories": video_categories,
+        # Add counts for each shortcut
         "question_papers_count": question_papers.count(),
         "schools_count": schools.count(),
-        "prospectors_count": prospectors.count(),
+        "prospectors_count": Prospectors.objects.count(),
         "colleges_count": colleges.count(),
         "bursaries_count": bursaries.count(),
-        
-        # Enhanced comment system
-        "comments": comments,
-        "comment_form": comment_form,
-        "reply_form": reply_form,
-        
-        # Document sharing system
-        "documents": documents,
-        "document_form": document_form,
-        "request_form": request_form,
-        
-        # AI Assistant Components
-        "chat_form": chat_form,
-        "chat_response": chat_response,
-        "current_question_type": question_type,
-        "question_types": [
-            ('general', 'General Question'),
-            ('career', 'Career Guidance'),
-            ('school', 'School Management'),
-            ('prospector', 'Undergraduate Prospector'),
-            ('bursary', 'Bursaries/Financial Aid'),
-            ('assessment', 'Assessments/Homework'),
-            ('memorandum', 'Memorandums/Answer Keys'),
-        ],
-        "recent_ai_questions": AIChatLog.objects.order_by('-created_at')[:5]
+        "jobs_count": jobs.count(),
+        "videos_count": videos.count(),  # Optional: videos count
     }
 
     return render(request, 'landing/home.html', context)
 
-
-#messaging
-def is_ajax_request(self, request):
-        """ Check if the request is an AJAX request by inspecting the headers. """
-        return request.META.get('HTTP_X_REQUESTED_WITH') == 'XMLHttpRequest'
-
-@method_decorator(csrf_exempt)
-def post(self, request, *args, **kwargs):
-    # Check if it's an AJAX request
-    if self.is_ajax_request(request) and request.method == "POST":
-        form = MessageForm(request.POST, request.FILES)
-        if form.is_valid():
-            # Save the message
-            message = form.save(commit=False)
-            message.author = request.user
-            message.save()
-
-            # Save each uploaded file to MessageMedia
-            files = request.FILES.getlist('media_files')
-            for file in files:
-                MessageMedia.objects.create(message=message, media=file)
-
-            # Prepare the response
-            media_urls = [media.media.url for media in message.media.all()]
-            return JsonResponse({
-                'author': message.author.username,
-                'text': message.text,
-                'media_urls': media_urls,
-                'timestamp': message.timestamp.strftime('%Y-%m-%d %H:%M:%S'),
-            })
-
-    return super().get(request, *args, **kwargs)
-
-def external_redirect(request, url):
-    return redirect(url)
-
-# AJAX Handlers
-@require_POST
-def add_comment(request):
-    data = request.POST if request.POST else json.loads(request.body)
-    form = CommentForm(data)
-    
-    if form.is_valid():
-        comment = form.save(commit=False)
-        if request.user.is_authenticated:
-            comment.user = request.user
-            comment.guest_name = None
-            comment.guest_email = None
-        else:
-            comment.guest_name = data.get('guest_name', 'Anonymous')
-            comment.guest_email = data.get('guest_email')
-        comment.save()
-        
-        return JsonResponse({
-            'success': True,
-            'comment_id': comment.id,
-            'username': comment.display_name,
-            'content': comment.content,
-            'created_at': comment.created_at.strftime("%b %d, %Y %I:%M %p"),
-            'like_count': comment.like_count,
-            'reply_count': comment.reply_count,
-            'is_guest': not comment.user,
-        })
-    return JsonResponse({'success': False, 'errors': form.errors}, status=400)
-
-@require_POST
-def add_reply(request):
-    data = request.POST
-    form = ReplyForm(data)
-    
-    if form.is_valid():
-        parent_id = data.get('parent_id')
-        try:
-            parent_comment = Comment.objects.get(id=parent_id)
-            reply = form.save(commit=False)
-            if request.user.is_authenticated:
-                reply.user = request.user
-            else:
-                reply.guest_name = data.get('guest_name', 'Anonymous')
-            reply.parent = parent_comment
-            reply.save()
-            
-            return JsonResponse({
-                'success': True,
-                'reply_id': reply.id,
-                'username': reply.display_name,
-                'content': reply.content,
-                'created_at': reply.created_at.strftime("%b %d, %Y %I:%M %p"),
-                'like_count': reply.like_count,
-            })
-        except Comment.DoesNotExist:
-            return JsonResponse({'success': False, 'error': 'Parent comment not found'}, status=404)
-    return JsonResponse({'success': False, 'errors': form.errors}, status=400)
-
-
-@require_POST
-def upload_document(request):
-    if not request.user.is_authenticated:
-        return JsonResponse({'success': False, 'error': 'Authentication required'}, status=403)
-        
-    form = DocumentUploadForm(request.POST, request.FILES)
-    if form.is_valid():
-        document = form.save(commit=False)
-        document.uploaded_by = request.user
-        
-        # Generate a unique filename
-        original_name, ext = os.path.splitext(request.FILES['file'].name)
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        document.file.name = f"documents/{slugify(original_name)}_{timestamp}{ext}"
-        
-        document.save()
-        return JsonResponse({
-            'success': True,
-            'document_id': document.id,
-            'title': document.title,
-            'description': document.description,
-            'uploaded_at': document.uploaded_at.strftime("%b %d, %Y"),
-            'download_url': document.file.url,
-        })
-    return JsonResponse({'success': False, 'errors': form.errors}, status=400)
-
-@require_POST
-def toggle_like(request):
-    data = json.loads(request.body)
-    comment_id = data.get('comment_id')
-    
-    try:
-        comment = Comment.objects.get(id=comment_id)
-        if request.user in comment.likes.all():
-            comment.likes.remove(request.user)
-            liked = False
-        else:
-            comment.likes.add(request.user)
-            liked = True
-        
-        return JsonResponse({
-            'success': True,
-            'liked': liked,
-            'like_count': comment.like_count
-        })
-    except Comment.DoesNotExist:
-        return JsonResponse({'success': False, 'error': 'Comment not found'}, status=404)
-    
-@require_POST
-def submit_request(request):
-    data = request.POST if request.POST else json.loads(request.body)
-    form = RequestForm(data)
-    
-    if form.is_valid():
-        request_obj = form.save(commit=False)
-        if request.user.is_authenticated:
-            request_obj.user = request.user
-            request_obj.guest_email = None
-        else:
-            request_obj.guest_email = data.get('guest_email')
-        request_obj.save()
-        
-        # Here you would typically send an email notification
-        # send_request_notification(request_obj)
-        
-        return JsonResponse({
-            'success': True,
-            'request_id': request_obj.id,
-            'message': "Your request has been submitted successfully!",
-        })
-    return JsonResponse({'success': False, 'errors': form.errors}, status=400)
-
-def download_document(request, document_id):
-    try:
-        document = Document.objects.get(id=document_id, approved=True)
-        response = HttpResponse(document.file, content_type='application/force-download')
-        response['Content-Disposition'] = f'attachment; filename="{os.path.basename(document.file.name)}"'
-        return response
-    except Document.DoesNotExist:
-        return HttpResponse("Document not found", status=404)
-
-# List circuits
-def circuitGallery(request):
-    user = request.user
-    search_query = request.GET.get('search')
-
-    if search_query:
-        circuits = Circuit.objects.filter(name__icontains=search_query)
-    else:
-        circuits = Circuit.objects.all()
-
-    context = {'circuits': circuits}
-    return render(request, 'circuit/circuit_gallery.html', context)
-
-
-# List circuits
-def circuit_gallery(request):
-    circuits = Circuit.objects.all()
-    return render(request, 'circuit/circuit_gallery.html', {'circuits': circuits})
-
-
-# View a single circuit
-def viewCircuit(request, pk):
-    if not request.user.is_authenticated:
-        return redirect('register_selection')  # use the name of your URL pattern
-
-    circuit = get_object_or_404(Circuit, id=pk)
-    return render(request, 'circuits/circuit_detail.html', {'circuit': circuit})
-
-#add the circuit
-def addCircuit(request):
-    if request.method == 'POST':
-        data = request.POST
-
-        circuit = Circuit.objects.create(
-            name=data['name'],
-            contact=data['contact'],
-            email=data['email'],
-            whatsapp_number=data['whatsapp_number'],
-            address=data.get('address', ''),
-        )
-
-        # Safe get or create Circuit_Manager
-        manager, created = Circuit_Manager.objects.get_or_create(admin=request.user)
-        manager.circuit = circuit
-        manager.save()
-
-        return redirect('circuit_gallery')
-
-    return render(request, 'circuit/add_circuit.html')
-
-
-#end
-def editCircuit(request, pk):
-    circuit = get_object_or_404(Circuit, pk=pk)
-
-    if request.user.circuit_manager.circuit != circuit:
-        return redirect('no_access')
-
-    if request.method == 'POST':
-        data = request.POST
-        circuit.name = data['name']
-        circuit.contact = data['contact']
-        circuit.email = data['email']
-        circuit.whatsapp_number = data['whatsapp_number']
-        circuit.address = data.get('address', '')
-        circuit.save()
-        return redirect('view_circuit', pk=pk)
-
-    context = {'circuit': circuit}
-    return render(request, 'circuit/edit_circuit.html', context)
-
-
-# Delete a circuit
-def deleteCircuit(request, pk):
-    circuit = get_object_or_404(Circuit, pk=pk)
-
-    # Allow access if superuser or if assigned to this circuit
-    if not request.user.is_superuser:
-        try:
-            if request.user.circuit_manager.circuit != circuit:
-                return redirect('no_access')
-        except:
-            return redirect('no_access')
-
-    circuit.delete()
-    return redirect('circuit_gallery')
-
-#no success 
-def no_access_view(request):
-    return render(request, 'circuit/no_access.html')
-
-#circuit dashboard
-class CircuitDashboardView(TemplateView):
-    template_name = 'circuit/dashboard.html'
-
-    def get_context_data(self, **kwargs):
-        context = super().get_context_data(**kwargs)
-        
-        # Extract subdomain
-        subdomain = self.request.get_host().split('.')[0]
-        
-        # Try to find a circuit with slug=subdomain (or name if you use that)
-        try:
-            circuit = Circuit.objects.get(slug=subdomain)  # or name=subdomain if you're not using slugs
-        except Circuit.DoesNotExist:
-            circuit = None
-
-        if circuit:
-            context['schools'] = circuit.school_set.all()  # or circuit.schools.all() if you set related_name
-            context['school_count'] = circuit.school_set.count()
-            context['principal_count'] = circuit.principals_on_db
-            context['staff_count'] = circuit.staff_on_db
-            context['learner_count'] = circuit.learners_on_db
-
-        context['circuit'] = circuit  # always include it
-
-        return context
-
-
-#views schoollistview
-class CircuitSchoolListView(ListView):
-    model = School
-    template_name = 'circuit/school_list.html'  # make sure you have this template
-    context_object_name = 'schools'
-
-    def get_queryset(self):
-        circuit = self.request.circuit  # middleware should attach this
-        return School.objects.filter(circuit=circuit)
-
-    def get_context_data(self, **kwargs):
-        context = super().get_context_data(**kwargs)
-        context['circuit'] = self.request.circuit
-        return context
-    
 #general search view
 def general_search_view(request):
     """
@@ -552,6 +232,8 @@ def general_search_view(request):
         "form": None,  # Placeholder for the form, if needed
     })
 
+#password
+#login_page
 #password
 #login_page
 def login_page(request):
@@ -651,16 +333,33 @@ def submit_documents(request):
     }
     return render(request, 'main_app/submit_documents.html', context)
 
+
 def doLogin(request, **kwargs):
-    #Authenticate
-    user = EmailBackend.authenticate(request, username=request.POST.get('email'), password=request.POST.get('password'))
-    if user != None:
-        login(request, user)
+    from django.contrib.auth import login
+    from django.contrib import messages
+    from django.shortcuts import redirect
+    from django.urls import reverse
+    
+    # Get credentials from POST
+    email = request.POST.get('email')
+    password = request.POST.get('password')
+    
+    # Import your EmailBackend
+    from main_app.EmailBackend import EmailBackend
+    
+    # Create backend instance and authenticate
+    backend = EmailBackend()
+    user = backend.authenticate(request, username=email, password=password)
+    
+    if user is not None:
+        # Login with explicit backend
+        login(request, user, backend='main_app.EmailBackend.EmailBackend')
+        
+        # Your redirect logic
         if user.user_type == '1':
             return redirect(reverse("admin_home"))
         elif user.user_type == '2':
             return redirect(reverse("staff_home"))
-        #add user login
         elif user.user_type == '3':
             return redirect(reverse("student_home"))
         elif user.user_type == '4':
@@ -676,8 +375,9 @@ def doLogin(request, **kwargs):
         else:
             return redirect(reverse("CWA_Admin"))
     else:
-        messages.error(request, "Invalid details")
+        messages.error(request, "Invalid email or password")
         return redirect("/")
+    
 
 #register selection
 def terms_conditions(request):
@@ -689,6 +389,7 @@ def logout_user(request):
     return redirect("/")
 
 
+#attendance
 @csrf_exempt
 def get_attendance(request):
     subject_id = request.POST.get('subject')
@@ -709,6 +410,140 @@ def get_attendance(request):
     except Exception as e:
         return None
 
+
+# List circuits
+def circuitGallery(request):
+    user = request.user
+    search_query = request.GET.get('search')
+
+    if search_query:
+        circuits = Circuit.objects.filter(name__icontains=search_query)
+    else:
+        circuits = Circuit.objects.all()
+
+    context = {'circuits': circuits}
+    return render(request, 'circuits/circuit_gallery.html', context)
+
+
+# List circuits
+def circuitGallery(request):
+    user = request.user
+
+    # Superuser sees all circuits
+    if user.is_superuser:
+        circuits = Circuit.objects.all()
+        is_admin = True
+    else:
+        # Normal user: show only their assigned circuit(s)
+        try:
+            # Assuming user has a foreign key or M2M to Circuit
+            circuits = user.circuits.all()  # or user.circuit_set.all()
+            if not circuits.exists():
+                return redirect('no_access')
+            is_admin = False
+        except AttributeError:
+            # No circuit assigned
+            return redirect('no_access')
+
+    context = {'circuits': circuits, 'is_admin': is_admin}
+    return render(request, 'circuit/circuit_gallery.html', context)
+
+# View a single circuit
+def viewCircuit(request, pk):
+    circuit = get_object_or_404(Circuit, pk=pk)
+    user = request.user
+
+    # Superuser sees everything
+    if user.is_superuser:
+        can_view = True
+    else:
+        # Normal user or circuit manager: check assignment
+        try:
+            if user.circuit_manager.circuit == circuit:
+                can_view = True
+            else:
+                can_view = False
+        except Circuit_Manager.DoesNotExist:
+            can_view = False
+
+    if not can_view:
+        return redirect('no_access')
+
+    return render(request, 'circuit/circuit_detail.html', {'circuit': circuit, 'is_admin': user.is_superuser})
+
+    
+# Add a new circuit with preview
+def addCircuit(request):
+    if request.method == 'POST':
+        data = request.POST
+
+        # Create the Circuit
+        circuit = Circuit.objects.create(
+            name=data['name'],
+            contact=data['contact'],
+            email=data['email'],
+            whatsapp_number=data['whatsapp_number'],
+            address=data.get('address', ''),
+        )
+
+        # If user is not superuser, link the circuit to their manager account
+        if not request.user.is_superuser:
+            manager, created = Circuit_Manager.objects.get_or_create(admin=request.user)
+            manager.circuit = circuit
+            manager.save()
+        else:
+            # Optionally show a message for admin
+            messages.success(request, f"Circuit '{circuit.name}' added successfully by Admin.")
+
+        return redirect('circuit_gallery')
+
+    return render(request, 'circuit/add_circuit.html')
+
+#edit circuit
+def editCircuit(request, pk):
+    circuit = get_object_or_404(Circuit, pk=pk)
+
+    # Allow access if user is superuser or manages this circuit
+    if not request.user.is_superuser:
+        try:
+            if request.user.circuit_manager.circuit != circuit:
+                return redirect('no_access')
+        except Circuit_Manager.DoesNotExist:
+            return redirect('no_access')
+
+    if request.method == 'POST':
+        data = request.POST
+        circuit.name = data['name']
+        circuit.contact = data['contact']
+        circuit.email = data['email']
+        circuit.whatsapp_number = data['whatsapp_number']
+        circuit.address = data.get('address', '')
+        circuit.save()
+
+        messages.success(request, f"Circuit '{circuit.name}' updated successfully.")
+        return redirect('view_circuit', pk=pk)
+
+    context = {'circuit': circuit}
+    return render(request, 'circuit/edit_circuit.html', context)
+
+
+#delete circuit
+def deleteCircuit(request, pk):
+    circuit = get_object_or_404(Circuit, pk=pk)
+
+    # Allow access if user is superuser or manages this circuit
+    if not request.user.is_superuser:
+        try:
+            if request.user.circuit_manager.circuit != circuit:
+                return redirect('no_access')
+        except Circuit_Manager.DoesNotExist:
+            return redirect('no_access')
+
+    circuit.delete()
+    messages.success(request, f"Circuit '{circuit.name}' deleted successfully.")
+    return redirect('circuit_gallery')
+
+
 # ########################################################
 # News & Events
 # ########################################################
@@ -721,6 +556,8 @@ def news_view(request):
     }
     return render(request, "core/news.html", context)
 
+# Use the active user model (CustomUser)
+User = get_user_model()
 
 #add news events posts
 def post_add(request):
@@ -1335,24 +1172,16 @@ def viewSos(request, pk):
 
 
 #C.Manager
-class CircuitManager(View):
-    def get(self, request):
-        # Redirect unauthenticated users
-        if not request.user.is_authenticated:
-            return redirect('register_selection')  # or your login/register page
+class CircuitManager(TemplateView):
+    template_name = 'landing/circuitmanager.html'
 
-        try:
-            manager = request.user.circuit_manager  # will only work if user is authenticated
-            circuit = manager.circuit
-        except (AttributeError, Circuit_Manager.DoesNotExist):
-            return render(request, 'circuit/no_access.html')
-
-        context = {
-            'circuit': circuit
-        }
-        return render(request, 'circuit/circuit_manager.html', context)
+    # If you want to pass any context data to the template, you can override the get_context_data method
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        # Add any context data here if needed
+        context['some_data'] = 'This is some data to display on the earnings page.'
+        return context
     
-
 #contact section
 def contact_list_view(request):
     contacts = Contact.objects.all().order_by('-submitted_at')
@@ -1515,3 +1344,514 @@ def custom_password_reset_confirm(request, uidb64, token):
 
     messages.error(request, "The password reset link is invalid or has expired.")
     return redirect("password_reset_request")
+
+# Video add functions
+def video_add_view(request):
+    # Check if user is authenticated
+    if not request.user.is_authenticated:
+        messages.error(request, "Please login to upload videos")
+        return redirect('login_page')  # Adjust to your login URL
+    
+    categories = VideoCategory.objects.all()
+
+    if request.method == "POST":
+        title = request.POST.get("title")
+        description = request.POST.get("description")
+        category_id = request.POST.get("category")
+        category_new = request.POST.get("category_new")
+        video_file = request.FILES.get("video_file")
+        thumbnail = request.FILES.get("thumbnail")
+
+        # Create or get category
+        if category_new:
+            category_obj, created = VideoCategory.objects.get_or_create(name=category_new)
+        elif category_id and category_id != 'none':
+            category_obj = VideoCategory.objects.get(id=category_id)
+        else:
+            category_obj = None
+
+        # Save the video
+        video = Video.objects.create(
+            author=request.user,
+            title=title,
+            description=description,
+            category=category_obj,
+            video_file=video_file,
+            thumbnail=thumbnail,
+            website_url=request.POST.get("website_url"),
+            gmail_url=request.POST.get("gmail_url"),
+            whatsapp_number=request.POST.get("whatsapp_number"),
+            facebook_url=request.POST.get("facebook_url"),
+            tiktok_url=request.POST.get("tiktok_url"),
+            zoom_url=request.POST.get("zoom_url"),
+            microsoftTeam_url=request.POST.get("microsoftTeam_url"),
+            location=request.POST.get("location"),
+            twitter_url=request.POST.get("twitter_url"),
+            playstore_url=request.POST.get("playstore_url"),
+            linkedin_url=request.POST.get("linkedin_url"),
+            instagram_url=request.POST.get("instagram_url"),
+            pinterest_url=request.POST.get("pinterest_url"),
+            youtube_url=request.POST.get("youtube_url"),
+        )
+
+        messages.success(request, "Video uploaded successfully!")
+        return redirect("show_video", video_id=video.id)
+
+    return render(request, "videos/add_video.html", {"categories": categories})
+
+# View videos
+def videos_view(request):
+    categories = VideoCategory.objects.all()
+    videos = Video.objects.select_related('category', 'author').order_by('-date_posted')
+    return render(request, 'videos/videos.html', {'videos': videos, 'categories': categories})
+
+# Show video
+def show_video(request, video_id):
+    video = get_object_or_404(Video, id=video_id)
+    return render(request, 'videos/show_video.html', {'video': video})
+
+@require_POST
+def like_video(request, video_id):
+    # Check if user is authenticated
+    if not request.user.is_authenticated:
+        return JsonResponse({
+            'error': 'Authentication required',
+            'login_url': 'login_page'  # Adjust to your login URL
+        }, status=401)
+    
+    video = get_object_or_404(Video, id=video_id)
+    like, created = VideoLike.objects.get_or_create(video=video, user=request.user)
+    
+    if not created:
+        like.delete()
+        liked = False
+    else:
+        liked = True
+    
+    return JsonResponse({
+        'liked': liked,
+        'likes_count': video.likes.count()
+    })
+
+@require_POST
+def add_comment(request, video_id):
+    # Check if user is authenticated
+    if not request.user.is_authenticated:
+        return JsonResponse({
+            'error': 'Authentication required',
+            'login_url': 'login_page'  # Adjust to your login URL
+        }, status=401)
+    
+    video = get_object_or_404(Video, id=video_id)
+    data = json.loads(request.body)
+    
+    comment = VideoComment.objects.create(
+        video=video,
+        user=request.user,
+        text=data.get('text')
+    )
+    
+    return JsonResponse({
+        'success': True,
+        'comment': {
+            'user_name': comment.user.username,
+            'text': comment.text,
+            'created_at': comment.created_at.strftime('%b %d, %Y')
+        }
+    })
+
+def get_comments(request, video_id):
+    video = get_object_or_404(Video, id=video_id)
+    comments = video.comments.all().order_by('created_at')
+    
+    comments_data = []
+    for comment in comments:
+        comments_data.append({
+            'user_name': comment.user.username if comment.user else 'Unknown User',
+            'text': comment.text,
+            'created_at': comment.created_at.strftime('%b %d, %Y')
+        })
+    
+    return JsonResponse(comments_data, safe=False)
+
+
+#clean data
+def clean_int(value):
+    """
+    Convert messy Excel numbers to integer
+    """
+    if pd.isna(value) or value == "" or value is None:
+        return 0
+
+    value = str(value).strip().lower()
+
+    # remove symbols like ≈, +, commas, spaces, em-dash
+    for ch in ['≈', '~', '+', ',', ' ', '$', '€', '£', '—']:
+        value = value.replace(ch, '')
+
+    # convert "2k" -> 2000, "1.5k" -> 1500
+    if value.endswith('k'):
+        try:
+            return int(float(value[:-1]) * 1000)
+        except:
+            return 0
+    
+    # handle ranges like "100-200" by taking the first value
+    if '-' in value and not value.startswith('-'):
+        try:
+            return int(float(value.split('-')[0]))
+        except:
+            return 0
+
+    # final check: convert clean text to int
+    try:
+        return int(float(value))
+    except:
+        return 0
+
+def upload_schools_from_excel(request):
+    if request.method == 'POST':
+        form = UploadExcelForm(request.POST, request.FILES)
+        if form.is_valid():
+            excel_file = request.FILES['file']
+            try:
+                df = pd.read_excel(excel_file)
+                df = df.replace({np.nan: ""})
+                
+                # ✅ NORMALIZE COLUMN NAMES
+                df.columns = [col.strip().lower() for col in df.columns]
+                print("Available columns:", df.columns.tolist())
+                
+                # ✅ MAP EXCEL COLUMNS TO YOUR MODEL FIELDS
+                column_mapping = {
+                    # Required fields
+                    'emis': ['natemis', 'emis', 'school_code', 'code', 'id'],
+                    'name': ['institution_name', 'school_name', 'school', 'name'],
+                    'contact': ['telephone', 'phone', 'contact', 'contact_number', 'facsimile'],
+                    
+                    # ForeignKey fields
+                    'circuit': ['eicircuit', 'circuit', 'region', 'area'],
+                    
+                    # Basic info fields
+                    'phase': ['phase', 'school_phase', 'type_doe', 'level'],
+                    'sector': ['sector', 'school_sector', 'type'],
+                    'school_type': ['type_doe', 'sector', 'school_type', 'type'],  # Map from Sector/Type_DoE
+                    
+                    # Count fields
+                    'educators_on_db': ['educators_2016', 'teachers', 'educators', 'staff'],
+                    'count': ['learners_2016', 'students', 'learners', 'enrollment'],
+                    
+                    # Address/Contact fields
+                    'address': ['streetaddress', 'address', 'location', 'physical_address', 'postaladdress'],
+                    'email': ['email', 'contact_email'],
+                    'whatsapp_number': ['whatsapp', 'mobile', 'cellphone'],
+                    
+                    # Additional fields from your Excel
+                    'head_principal': ['addressee', 'principal', 'head_principal', 'manager'],
+                    'website_url': ['website', 'url'],
+                    
+                    # Location fields that might help
+                    'grade': ['phase', 'type_doe']  # Map phase to grade
+                }
+                
+                created_count = 0
+                updated_count = 0
+                errors = []
+
+                for index, row in df.iterrows():
+                    data = {}
+                    print(f"📋 Processing row {index + 2}")
+
+                    # ✅ EXTRACT AND MAP EACH FIELD
+                    for model_field, possible_columns in column_mapping.items():
+                        value = None
+                        
+                        # Find the first matching column
+                        for col in possible_columns:
+                            if col in df.columns:
+                                raw_value = row[col]
+                                if raw_value not in ["", "—", None]:
+                                    value = raw_value
+                                    break
+                        
+                        # Process based on field type
+                        if model_field in ['educators_on_db', 'count', 'school_term', 'year']:
+                            data[model_field] = clean_int(value) if value is not None else 0
+                            
+                        elif model_field == 'circuit' and value:
+                            circuit_obj, _ = Circuit.objects.get_or_create(name=str(value).strip())
+                            data[model_field] = circuit_obj
+                            
+                        elif model_field == 'grade' and value:
+                            # Map Phase to Grade (e.g., "PRIMARY SCHOOL" -> "Primary")
+                            phase_value = str(value).upper()
+                            if 'PRIMARY' in phase_value:
+                                grade_name = 'Primary'
+                            elif 'SECONDARY' in phase_value or 'HIGH' in phase_value:
+                                grade_name = 'Secondary'
+                            elif 'COMBINED' in phase_value:
+                                grade_name = 'Combined'
+                            else:
+                                grade_name = 'Other'
+                            
+                            grade_obj, _ = Grade.objects.get_or_create(name=grade_name)
+                            data[model_field] = grade_obj
+                            
+                        elif model_field == 'school_type' and value:
+                            # Map Sector to school_type
+                            sector_value = str(value).upper()
+                            if 'INDEPENDENT' in sector_value:
+                                data[model_field] = 'Private'
+                            else:
+                                data[model_field] = 'Public'
+                                
+                        elif model_field == 'contact' and not value:
+                            # Ensure contact has a value (required field)
+                            data[model_field] = "Not provided"
+                            
+                        elif value is not None:
+                            data[model_field] = str(value).strip()
+                            
+                        else:
+                            # Set defaults for missing values
+                            if model_field == 'contact':
+                                data[model_field] = "Not provided"
+                            elif model_field in ['educators_on_db', 'count']:
+                                data[model_field] = 0
+                            elif model_field == 'year':
+                                data[model_field] = 2025
+                            elif model_field == 'school_type':
+                                data[model_field] = 'Public'
+                            elif model_field == 'filter_by':
+                                data[model_field] = 'Region'
+                            elif model_field == 'school_term':
+                                data[model_field] = 0
+
+                    # ✅ SET DEFAULTS FOR REQUIRED FIELDS
+                    defaults = {
+                        'year': 2025,
+                        'count': 0,
+                        'school_term': 0,
+                        'filter_by': 'Region',
+                        'school_type': 'Public',
+                        'educators_on_db': 0,
+                        'contact': 'Not provided',
+                        'address': 'Address not provided',
+                        'phase': 'Unknown',
+                        'sector': 'Unknown'
+                    }
+                    
+                    for field, default_value in defaults.items():
+                        if field not in data or not data[field]:
+                            data[field] = default_value
+
+                    # ✅ GET EMIS FOR IDENTIFICATION
+                    emis_value = data.get('emis')
+                    school_name = data.get('name')
+                    
+                    # Validate EMIS
+                    if not emis_value or str(emis_value).strip() in ["", "—", "nan", "null"]:
+                        errors.append(f"Row {index + 2}: Invalid EMIS '{emis_value}'")
+                        continue
+
+                    # ✅ UPDATE OR CREATE SCHOOL
+                    try:
+                        # Clean the data - remove empty strings
+                        clean_data = {}
+                        for key, value in data.items():
+                            if isinstance(value, str) and value.strip() == "":
+                                clean_data[key] = None
+                            else:
+                                clean_data[key] = value
+
+                        obj, created = School.objects.update_or_create(
+                            emis=str(emis_value).strip(),
+                            defaults=clean_data
+                        )
+                        
+                        if created:
+                            created_count += 1
+                            print(f"✅ Created: {emis_value} - {school_name}")
+                        else:
+                            updated_count += 1
+                            print(f"🔄 Updated: {emis_value} - {school_name}")
+                            
+                    except Exception as e:
+                        error_msg = f"Row {index + 2}: {str(e)}"
+                        errors.append(error_msg)
+                        print(f"❌ Error: {error_msg}")
+
+                # ✅ SHOW RESULTS
+                result_msg = f"✅ {created_count} new schools created, {updated_count} existing schools updated!"
+                if errors:
+                    result_msg += f" ❌ {len(errors)} errors occurred."
+                    print("Errors:", errors)
+                
+                messages.success(request, result_msg)
+                return redirect('manage_school')
+
+            except Exception as e:
+                messages.error(request, f"Error importing file: {e}")
+                print(f"File error: {e}")
+
+    else:
+        form = UploadExcelForm()
+
+    return render(request, 'school/upload_excel.html', {'form': form})
+
+#uploading subjects
+def upload_subjects_from_excel(request):
+    if request.method == 'POST':
+        form = SubjectExcelUploadForm(request.POST, request.FILES)
+        if form.is_valid():
+            excel_file = request.FILES['excel_file']
+            try:
+                df = pd.read_excel(excel_file)
+                df = df.replace({np.nan: ""})
+                df.columns = [col.strip().lower() for col in df.columns]
+
+                # Get or create default course (safe method)
+                try:
+                    default_course, created = Course.objects.get_or_create(
+                        name="National Curriculum"
+                    )
+                    if created:
+                        print(f"✅ Created default course: {default_course.name}")
+                except Exception as e:
+                    messages.error(request, f"Error creating default course: {str(e)}")
+                    return redirect('upload_courses_excel')
+
+                created_count = 0
+                skipped = []
+                errors = []
+
+                for index, row in df.iterrows():
+                    try:
+                        # Subject name
+                        subject_name = None
+                        for col in ['name', 'subject_name', 'subject']:
+                            if col in df.columns and row[col]:
+                                subject_name = str(row[col]).strip()
+                                break
+
+                        if not subject_name:
+                            errors.append(f"Row {index + 2}: Subject name missing")
+                            continue
+
+                        # Grade handling
+                        grade_name = None
+                        for col in ['grade', 'grade_name']:
+                            if col in df.columns and row[col]:
+                                grade_value = row[col]
+                                if isinstance(grade_value, (int, float)):
+                                    grade_name = str(int(grade_value))
+                                else:
+                                    grade_name = str(grade_value).strip()
+                                break
+
+                        if not grade_name:
+                            errors.append(f"Row {index + 2}: Grade missing for subject '{subject_name}'")
+                            continue
+
+                        # Convert to proper grade name
+                        if grade_name.upper() == 'R':
+                            proper_grade_name = "Grade R"
+                        elif grade_name.isdigit():
+                            proper_grade_name = f"Grade {grade_name}"
+                        else:
+                            proper_grade_name = grade_name
+
+                        # Get or create grade
+                        try:
+                            grade, grade_created = Grade.objects.get_or_create(
+                                name=proper_grade_name
+                            )
+                            if grade_created:
+                                print(f"✅ Created new grade: {proper_grade_name}")
+                        except Exception as e:
+                            errors.append(f"Row {index + 2}: Error creating grade '{proper_grade_name}': {str(e)}")
+                            continue
+
+                        # Course handling
+                        course = default_course
+                        course_name = None
+                        
+                        course_columns = ['course', 'course_name']
+                        available_course_columns = [col for col in course_columns if col in df.columns]
+                        
+                        if available_course_columns:
+                            for col in available_course_columns:
+                                if row[col]:
+                                    course_name = str(row[col]).strip()
+                                    if course_name and course_name != "National Curriculum":
+                                        try:
+                                            found_course = Course.objects.filter(name__iexact=course_name).first()
+                                            if found_course:
+                                                course = found_course
+                                            else:
+                                                course, created = Course.objects.get_or_create(
+                                                    name=course_name
+                                                )
+                                                if created:
+                                                    print(f"✅ Created new course: {course_name}")
+                                        except Exception as e:
+                                            errors.append(f"Row {index + 2}: Error with course '{course_name}': {str(e)}")
+                                        break
+
+                        # Check duplicates and create subject
+                        try:
+                            existing_subject = Subject.objects.filter(
+                                name__iexact=subject_name, 
+                                grade=grade,
+                                course=course
+                            ).first()
+
+                            if existing_subject:
+                                skipped.append(f"Row {index + 2}: '{subject_name}' (Grade: {grade.name}) already exists")
+                                continue
+
+                            Subject.objects.create(
+                                name=subject_name,
+                                grade=grade,
+                                course=course
+                            )
+                            created_count += 1
+                            print(f"✅ Created: {subject_name} (Grade: {grade.name})")
+                            
+                        except Exception as e:
+                            errors.append(f"Row {index + 2}: Error creating subject: {str(e)}")
+
+                    except Exception as e:
+                        errors.append(f"Row {index + 2}: {str(e)}")
+
+                # Final feedback
+                if created_count > 0:
+                    messages.success(request, f"✅ Successfully created {created_count} subjects")
+                
+                if skipped:
+                    messages.info(request, f"⏭️ {len(skipped)} subjects skipped (already exist)")
+                    for skip_msg in skipped[:3]:
+                        messages.info(request, skip_msg)
+                    if len(skipped) > 3:
+                        messages.info(request, f"... and {len(skipped) - 3} more duplicates")
+                
+                if errors:
+                    messages.warning(request, f"⚠️ {len(errors)} errors encountered")
+                    for error in errors[:5]:
+                        messages.warning(request, error)
+                    if len(errors) > 5:
+                        messages.warning(request, f"... and {len(errors) - 5} more errors")
+                else:
+                    messages.success(request, "🎉 All subjects processed successfully!")
+
+                return redirect('manage_subject')
+
+            except Exception as e:
+                messages.error(request, f"Error reading Excel file: {str(e)}")
+                return redirect('upload_courses_excel')
+
+    else:
+        form = SubjectExcelUploadForm()
+
+    return render(request, 'subjects/upload_excel.html', {'form': form})
+    

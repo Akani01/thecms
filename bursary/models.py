@@ -33,7 +33,6 @@ class Bursary(models.Model):
         ('Loan', 'Loan'),
     ]
 
-    
     title = models.CharField(max_length=200, null=True)
     summary = models.TextField(max_length=20000, blank=True, null=True)
     website_url = models.CharField(max_length=2000, null=True, blank=True)
@@ -44,14 +43,30 @@ class Bursary(models.Model):
 
     objects = BursaryManager()
     
-    class Meta:
-        managed = False
-        db_table = 'bursary_bursary'
+    # Picture get
+    def get_picture(self):
+        try:
+            return self.picture.url
+        except:
+            return settings.MEDIA_URL + "default.png"
+    
+    # Picture save
+    def save(self, *args, **kwargs):
+        super().save(*args, **kwargs)
+        try:
+            img = Image.open(self.picture.path)
+            if img.height > 300 or img.width > 300:
+                output_size = (300, 300)
+                img.thumbnail(output_size)
+                img.save(self.picture.path)
+        except:
+            pass
+    
+    # Picture delete
+    def delete(self, *args, **kwargs):
+        if self.picture.url != settings.MEDIA_URL + "default.png":
+            self.picture.delete()
+        super().delete(*args, **kwargs)
 
     def __str__(self):
-        return self.title or "Untitled Bursary"
-
-    def get_picture_url(self):
-        if self.picture:
-            return f"{settings.MEDIA_URL}{self.picture}"
-        return f"{settings.MEDIA_URL}default.png"  # Ensure fallback exists
+        return self.title

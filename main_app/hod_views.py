@@ -6,11 +6,14 @@ from django.http import HttpResponse, JsonResponse
 from django.shortcuts import (HttpResponse, HttpResponseRedirect,
                               get_object_or_404, redirect, render)
 from django.templatetags.static import static
+from django.db import transaction
+
 from django.urls import reverse
 from django.views.decorators.csrf import csrf_exempt
 from django.views.generic import UpdateView
 from django.db.models import Count
-
+import pandas as pd
+import numpy as np
 from .forms import *
 from .models import *
 
@@ -42,14 +45,11 @@ def admin_home(request):
     course_name_list = []
     subject_count_list = []
     student_count_list_in_course = []
-    educator_count_list_in_course = []
     
     for course in course_all:
         student_count = Student.objects.filter(course_id=course.id).count()
-        educator_count = Educator.objects.filter(course_id=course.id).count()
         course_name_list.append(course.name)
         student_count_list_in_course.append(student_count)
-        educator_count_list_in_course.append(educator_count)
     
     # Total grades and subjects in each school
     school_all = School.objects.all()
@@ -210,7 +210,6 @@ def add_staff(request):
             email = form.cleaned_data.get('email')
             gender = form.cleaned_data.get('gender')
             password = form.cleaned_data.get('password')
-            course = form.cleaned_data.get('course')
             passport = request.FILES.get('profile_pic')
             fs = FileSystemStorage()
             filename = fs.save(passport.name, passport)
@@ -232,69 +231,107 @@ def add_staff(request):
 
     return render(request, 'hod_template/add_staff_template.html', context)
 
-
+#add student
 def add_student(request):
     student_form = StudentForm(request.POST or None, request.FILES or None)
     context = {'form': student_form, 'page_title': 'Add Student'}
 
     if request.method == 'POST':
         if student_form.is_valid():
-            first_name = student_form.cleaned_data.get('first_name')
-            last_name = student_form.cleaned_data.get('last_name')
-            address = student_form.cleaned_data.get('address')
-            email = student_form.cleaned_data.get('email')
-            gender = student_form.cleaned_data.get('gender')
-            password = student_form.cleaned_data.get('password')
-
-            course = student_form.cleaned_data.get('course')
-            grade = student_form.cleaned_data.get('grade')
-            school = student_form.cleaned_data.get('school')
-            circuit = student_form.cleaned_data.get('circuit')
-            session = student_form.cleaned_data.get('session')
-
-            # Handle image upload
-            passport = request.FILES.get('profile_pic')
-            fs = FileSystemStorage()
-            passport_url = None
-            if passport:
-                filename = fs.save(passport.name, passport)
-                passport_url = fs.url(filename)
-
             try:
-                user = CustomUser.objects.create_user(
-                    email=email,
-                    password=password,
-                    user_type=3,
-                    first_name=first_name,
-                    last_name=last_name,
-                    profile_pic=passport_url
+                print("✅ Form is valid")
+                
+                data = student_form.cleaned_data
+                
+                # Validate email
+                if CustomUser.objects.filter(email=data['email']).exists():
+                    messages.error(request, f"Email '{data['email']}' is already registered")
+                    return render(request, 'hod_template/add_student_template.html', context)
+                
+                # Get circuit
+                school = data['school']
+                circuit = None
+                if school.circuit:
+                    circuit = school.circuit
+                else:
+                    circuit_name = f"{school.name} Circuit"
+                    circuit, created = Circuit.objects.get_or_create(
+                        name=circuit_name,
+                        defaults={'code': school.name[:10].upper()}
+                    )
+                    school.circuit = circuit
+                    school.save()
+                
+                # Profile picture
+                passport_url = None
+                if 'profile_pic' in request.FILES:
+                    fs = FileSystemStorage()
+                    filename = fs.save(request.FILES['profile_pic'].name, request.FILES['profile_pic'])
+                    passport_url = fs.url(filename)
+                
+                # ========== CREATE WITHOUT SIGNAL ==========
+                from django.db import transaction
+                from django.db.models.signals import post_save
+                
+                with transaction.atomic():
+                    # Temporarily disconnect the signal
+                    try:
+                        from main_app.models import create_user_profile
+                        post_save.disconnect(create_user_profile, sender=CustomUser)
+                        signal_disconnected = True
+                    except:
+                        signal_disconnected = False
+                    
+                    try:
+                        # Create user
+                        user = CustomUser.objects.create_user(
+                            email=data['email'],
+                            password=data['password'],
+                            user_type=3,
+                            first_name=data['first_name'],
+                            last_name=data['last_name'],
+                            gender=data['gender'],
+                            address=data['address'],
+                            profile_pic=passport_url
+                        )
+                        
+                        # Create student with ALL fields
+                        student = Student.objects.create(
+                            admin=user,
+                            grade=data['grade'],
+                            school=school,
+                            circuit=circuit,
+                            course=data.get('course')
+                        )
+                        
+                        print(f"✅ Created user {user.email} and student {student.id}")
+                        
+                    finally:
+                        # Reconnect signal if we disconnected it
+                        if signal_disconnected:
+                            post_save.connect(create_user_profile, sender=CustomUser)
+                
+                messages.success(request, 
+                    f"✅ {data['first_name']} {data['last_name']} successfully registered!"
                 )
-                user.gender = gender
-                user.address = address
-                user.save()
-
-                # Now create the Student instance
-                student = Student.objects.create(
-                    admin=user,
-                    course=course,
-                    session=session,
-                    circuit=circuit,
-                    school=school,
-                    grade=grade
-                )
-
-                messages.success(request, "Successfully Added Student")
+                
+                student_form = StudentForm()
+                context['form'] = student_form
                 return redirect(reverse('login_page'))
-
+                
             except Exception as e:
-                messages.error(request, f"Could Not Add Student: {e}")
-
+                messages.error(request, f"Error: {str(e)}")
+                print(f"❌ Error: {e}")
+                import traceback
+                traceback.print_exc()
         else:
-            messages.error(request, "Form is not valid")
+            messages.error(request, "Form has errors")
+            print("Errors:", student_form.errors)
 
     return render(request, 'hod_template/add_student_template.html', context)
 
-
+    
+#principal account
 def add_principal(request):
     principal_form = PrincipalForm(request.POST or None, request.FILES or None)
     context = {'form': principal_form, 'page_title': 'Add Principal'}
@@ -338,7 +375,6 @@ def add_principal(request):
     return render(request, 'hod_template/add_principal_template.html', context)
 
 
-
 def add_educator(request):
     educator_form = EducatorForm(request.POST or None, request.FILES or None)
     context = {'form': educator_form, 'page_title': 'Add Educator'}
@@ -354,13 +390,9 @@ def add_educator(request):
                 password = educator_form.cleaned_data.get('password')
                 address = educator_form.cleaned_data.get('address')
 
-                # Extract Educator model fields
+                # ✅ Extract Educator model fields (only what's in your form)
                 school = educator_form.cleaned_data.get('school')
-                grade = educator_form.cleaned_data.get('grade')
-                circuit = educator_form.cleaned_data.get('circuit')
-                term = educator_form.cleaned_data.get('term')
-                session = educator_form.cleaned_data.get('session')
-                course = educator_form.cleaned_data.get('course')
+                grades = educator_form.cleaned_data.get('grades')  # ✅ Fixed: 'grades' not 'grade'
                 subjects = educator_form.cleaned_data.get('subjects')
                 profile_pic = request.FILES.get('profile_pic')
 
@@ -375,7 +407,7 @@ def add_educator(request):
                 user = CustomUser.objects.create_user(
                     email=email,
                     password=password,
-                    user_type=5,
+                    user_type=5,  # Educator
                     first_name=first_name,
                     last_name=last_name,
                     profile_pic=profile_pic_url
@@ -388,13 +420,12 @@ def add_educator(request):
                 educator = Educator.objects.create(
                     admin=user,
                     school=school,
-                    grade=grade,
-                    circuit=circuit,
-                    session=session,
-                    term=term,
-                    course=course
+                    # ✅ Removed fields that aren't in your form: grade, circuit, term, session, course
                 )
-                educator.subjects.set(subjects)
+                
+                # ✅ Set the many-to-many fields
+                educator.grades.set(grades)    # ✅ This should work now with checkboxes
+                educator.subjects.set(subjects) # ✅ This should work now with checkboxes
                 educator.save()
 
                 messages.success(request, "Successfully Added Educator")
@@ -406,7 +437,6 @@ def add_educator(request):
             messages.error(request, "Form is not valid")
 
     return render(request, 'hod_template/add_educator_template.html', context)
-
 
 
 def add_circuit_manager(request):
@@ -442,48 +472,67 @@ def add_circuit_manager(request):
 
 
 
-
 def add_member(request):
     member_form = MemberForm(request.POST or None, request.FILES or None)
     context = {'form': member_form, 'page_title': 'Add Member'}
+    
     if request.method == 'POST':
         if member_form.is_valid():
-            first_name = member_form.cleaned_data.get('first_name')
-            last_name = member_form.cleaned_data.get('last_name')
-            address = member_form.cleaned_data.get('address')
-            email = member_form.cleaned_data.get('email')
-            gender = member_form.cleaned_data.get('gender')
-            password = member_form.cleaned_data.get('password')
-            school = member_form.cleaned_data.get('school')
-            circuit = school.circuit
-            position = member_form.cleaned_data.get('position')
-            term = member_form.cleaned_data.get('term')
-            session = member_form.cleaned_data.get('session')
-            passport = request.FILES['profile_pic']
-            fs = FileSystemStorage()
-            filename = fs.save(passport.name, passport)
-            passport_url = fs.url(filename)
             try:
+                # ✅ Extract only fields that exist in the form
+                first_name = member_form.cleaned_data.get('first_name')
+                last_name = member_form.cleaned_data.get('last_name')
+                address = member_form.cleaned_data.get('address')
+                email = member_form.cleaned_data.get('email')
+                gender = member_form.cleaned_data.get('gender')
+                password = member_form.cleaned_data.get('password')
+                position = member_form.cleaned_data.get('position')  # ✅ Only extra field in form
+                passport = request.FILES.get('profile_pic')  # ✅ Use get() to avoid KeyError
+                
+                # Upload image
+                passport_url = None
+                if passport:
+                    fs = FileSystemStorage()
+                    filename = fs.save(passport.name, passport)
+                    passport_url = fs.url(filename)
+
+                # Create CustomUser
                 user = CustomUser.objects.create_user(
-                    email=email, password=password, user_type=8, first_name=first_name, last_name=last_name, profile_pic=passport_url)
+                    email=email, 
+                    password=password, 
+                    user_type=8, 
+                    first_name=first_name, 
+                    last_name=last_name, 
+                    profile_pic=passport_url
+                )
                 user.gender = gender
                 user.address = address
-                user.school = school
-                user.position = position
-                user.member.session = session
-                user.member.term = term
                 user.save()
-                messages.success(request, "Successfully Added")
+
+                # ✅ Create Member instance with only the position field
+                member = Member.objects.create(
+                    admin=user,
+                    position=position
+                )
+                # ✅ Remove these lines - they don't exist in your form:
+                # user.school = school  # ❌ Not in form
+                # user.position = position  # ❌ Already set in Member
+                # user.member.session = session  # ❌ Not in form  
+                # user.member.term = term  # ❌ Not in form
+
+                messages.success(request, "Successfully Added Member")
                
-                # ✅ Redirect to the subdomain for this circuit
-                circuit_slug = circuit.slug  # e.g. 'elim', 'tsakani'
-                return redirect(f"https://{circuit_slug}.yourdomain.com/login/")
+                # ✅ If you need circuit redirect, you'll need to add school field to form
+                # For now, redirect to a default page
+                return redirect('admin_dashboard')  # or wherever you want
 
             except Exception as e:
-                messages.error(request, "Could Not Add: " + str(e))
+                messages.error(request, f"Could Not Add Member: {str(e)}")
         else:
-            messages.error(request, "Could Not Add: ")
+            messages.error(request, "Form is not valid")
+    
     return render(request, 'hod_template/add_member_template.html', context)
+
 
 
 def add_cwa_admin(request):
@@ -979,6 +1028,67 @@ def edit_student(request, student_id):
     else:
         return render(request, "hod_template/edit_student_template.html", context)
 
+
+#add principal 
+def add_principal(request):
+    principal_form = PrincipalForm(request.POST or None, request.FILES or None)
+    context = {'form': principal_form, 'page_title': 'Add Principal'}
+    
+    if request.method == 'POST':
+        if principal_form.is_valid():
+            try:
+                # Extract only fields that exist in the form
+                first_name = principal_form.cleaned_data.get('first_name')
+                last_name = principal_form.cleaned_data.get('last_name')
+                address = principal_form.cleaned_data.get('address')
+                email = principal_form.cleaned_data.get('email')
+                gender = principal_form.cleaned_data.get('gender')
+                password = principal_form.cleaned_data.get('password')
+                school = principal_form.cleaned_data.get('school')
+                grades = principal_form.cleaned_data.get('grades')  # ✅ Now multiple grades
+                subjects = principal_form.cleaned_data.get('subjects')  # ✅ Now multiple subjects
+                passport = request.FILES.get('profile_pic')
+                
+                # Upload image
+                passport_url = None
+                if passport:
+                    fs = FileSystemStorage()
+                    filename = fs.save(passport.name, passport)
+                    passport_url = fs.url(filename)
+
+                # Create CustomUser
+                user = CustomUser.objects.create_user(
+                    email=email, 
+                    password=password, 
+                    user_type=4, 
+                    first_name=first_name, 
+                    last_name=last_name, 
+                    profile_pic=passport_url
+                )
+                user.gender = gender
+                user.address = address
+                user.save()
+
+                # Create Principal instance
+                principal = Principal.objects.create(
+                    admin=user,
+                    school=school
+                )
+                # ✅ Set the many-to-many fields
+                principal.grades.set(grades)
+                principal.subjects.set(subjects)
+
+                messages.success(request, "Successfully Added Principal")
+                return redirect(reverse('login_page'))
+                
+            except Exception as e:
+                messages.error(request, f"Could Not Add Principal: {str(e)}")
+        else:
+            messages.error(request, "Form is not valid")
+    
+    return render(request, 'hod_template/add_principal_template.html', context)
+
+    
 
 def edit_course(request, course_id):
     instance = get_object_or_404(Course, id=course_id)
@@ -1642,3 +1752,90 @@ def school_performance_view(request):
         'avg_scores': avg_scores,
     }
     return render(request, 'school_performance.html', context)
+
+
+def upload_courses_from_excel(request):
+    if request.method == 'POST':
+        form = CourseExcelUploadForm(request.POST, request.FILES)
+        if form.is_valid():
+            excel_file = request.FILES['excel_file']
+            try:
+                df = pd.read_excel(excel_file)
+                df = df.replace({np.nan: ""})
+                
+                df.columns = [col.strip().lower() for col in df.columns]
+                print("Available columns:", df.columns.tolist())
+                
+                created_count = 0
+                updated_count = 0
+                errors = []
+                skipped = []
+
+                for index, row in df.iterrows():
+                    try:
+                        # Get course name
+                        course_name = None
+                        for col in ['name', 'course_name', 'course']:
+                            if col in df.columns and row[col]:
+                                course_name = str(row[col]).strip()
+                                break
+                        
+                        if not course_name:
+                            errors.append(f"Row {index + 2}: Course name is required")
+                            continue
+
+                        # Get school EMIS
+                        school_emis = None
+                        for col in ['school_emis', 'emis', 'school_code']:
+                            if col in df.columns and row[col]:
+                                school_emis = str(row[col]).strip()
+                                break
+                        
+                        school = None
+                        if school_emis and school_emis not in ["", "—"]:
+                            school = School.objects.filter(emis=school_emis).first()
+                            if not school:
+                                errors.append(f"Row {index + 2}: School with EMIS '{school_emis}' not found")
+
+                        # Check if course already exists
+                        existing_course = Course.objects.filter(
+                            name=course_name, 
+                            school=school
+                        ).first()
+                        
+                        if existing_course:
+                            skipped.append(f"Row {index + 2}: Course '{course_name}' already exists")
+                            continue
+
+                        # Create course
+                        Course.objects.create(
+                            name=course_name,
+                            school=school
+                        )
+                        
+                        created_count += 1
+                        school_info = f" for school {school_emis}" if school_emis else ""
+                        print(f"✅ Created: {course_name}{school_info}")
+                        
+                    except Exception as e:
+                        errors.append(f"Row {index + 2}: {str(e)}")
+
+                # Show results
+                result_msg = f"✅ {created_count} courses created"
+                if skipped:
+                    result_msg += f", ⏭️ {len(skipped)} duplicates skipped"
+                if errors:
+                    result_msg += f", ⚠️ {len(errors)} errors"
+                    for error in errors[:3]:
+                        messages.warning(request, error)
+                
+                messages.success(request, result_msg)
+                return redirect('course_list')
+
+            except Exception as e:
+                messages.error(request, f"Error reading Excel file: {e}")
+    
+    else:
+        form = CourseExcelUploadForm()
+    
+    return render(request, 'courses/upload_excel.html', {'form': form})
