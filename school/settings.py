@@ -36,10 +36,10 @@ DEBUG = os.environ.get('DEBUG', 'True').lower() == 'true'
 ALLOWED_HOSTS = [
     "thecms.co.za",
     "www.thecms.co.za",
-    "elimcircuit.com",
-    "elimcircuit.co.za",
     "www.elimcircuit.co.za",
+    "elimcircuit.co.za",
     "www.elimcircuit.com",
+    "elimcircuit.com",
     ".railway.app",
     ".herokuapp.com",
     "localhost",
