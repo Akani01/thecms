@@ -76,6 +76,152 @@
                 box-sizing: border-box;
             }
 
+            /* ================== SHOP LOGO STYLES ================== */
+            .shop-logo-container {
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                margin: 0 15px;
+            }
+
+            .shop-logo-link {
+                display: flex;
+                flex-direction: column;
+                align-items: center;
+                text-decoration: none;
+                color: #333;
+                transition: all 0.3s ease;
+                position: relative;
+            }
+
+            .shop-logo-link:hover {
+                transform: translateY(-2px);
+                color: #667eea;
+            }
+
+            .shop-logo-image {
+                width: 32px;
+                height: 32px;
+                object-fit: contain;
+                margin-bottom: 2px;
+                filter: drop-shadow(0 2px 4px rgba(0,0,0,0.1));
+                transition: all 0.3s ease;
+            }
+
+            .shop-logo-link:hover .shop-logo-image {
+                filter: drop-shadow(0 4px 8px rgba(102, 126, 234, 0.3));
+                transform: scale(1.05);
+            }
+
+            .shop-logo-text {
+                font-size: 11px;
+                font-weight: 600;
+                color: #333;
+                letter-spacing: 0.5px;
+                background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                -webkit-background-clip: text;
+                -webkit-text-fill-color: transparent;
+                background-clip: text;
+            }
+
+            .shop-logo-link:hover .shop-logo-text {
+                background: linear-gradient(135deg, #764ba2 0%, #667eea 100%);
+                -webkit-background-clip: text;
+                -webkit-text-fill-color: transparent;
+                background-clip: text;
+            }
+
+            /* Sidebar Shop Logo */
+            .side-shop-logo {
+                padding: 15px 20px;
+                margin: 10px 0;
+                border-top: 1px solid #eee;
+                border-bottom: 1px solid #eee;
+                background: linear-gradient(135deg, #f8f9ff 0%, #f0f2ff 100%);
+            }
+
+            .side-shop-link {
+                display: flex;
+                align-items: center;
+                text-decoration: none;
+                color: #333;
+                transition: all 0.3s ease;
+            }
+
+            .side-shop-link:hover {
+                transform: translateX(5px);
+            }
+
+            .side-shop-image {
+                width: 40px;
+                height: 40px;
+                object-fit: contain;
+                margin-right: 12px;
+                filter: drop-shadow(0 2px 4px rgba(0,0,0,0.1));
+            }
+
+            .side-shop-text {
+                font-size: 16px;
+                font-weight: 600;
+                background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                -webkit-background-clip: text;
+                -webkit-text-fill-color: transparent;
+                background-clip: text;
+            }
+
+            .side-shop-badge {
+                margin-left: auto;
+                background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                color: white;
+                padding: 2px 8px;
+                border-radius: 12px;
+                font-size: 11px;
+                font-weight: 600;
+            }
+
+            /* Mobile Bottom Navbar Shop */
+            .mobile-shop-logo {
+                display: flex;
+                flex-direction: column;
+                align-items: center;
+                text-decoration: none;
+                color: #666;
+                transition: all 0.3s ease;
+                padding: 5px;
+            }
+
+            .mobile-shop-logo.active {
+                color: #667eea;
+            }
+
+            .mobile-shop-logo .shop-logo-image {
+                width: 24px;
+                height: 24px;
+                margin-bottom: 2px;
+            }
+
+            .mobile-shop-logo .shop-logo-text {
+                font-size: 10px;
+                background: none;
+                -webkit-text-fill-color: #666;
+                background-clip: unset;
+            }
+
+            .mobile-shop-logo.active .shop-logo-text {
+                background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                -webkit-background-clip: text;
+                -webkit-text-fill-color: transparent;
+                background-clip: text;
+            }
+
+            /* Center Shop Logo in Top Nav */
+            .center-shop-container {
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                flex: 1;
+            }
+
             /* ================== RESPONSIVE NAVIGATION SYSTEM ================== */
             /* Mobile Bottom Navbar */
             .mobile-bottom-navbar {
@@ -87,7 +233,7 @@
                 box-shadow: 0 -2px 10px rgba(0,0,0,0.1);
                 z-index: 1000;
                 display: none;
-                padding: 10px 0;
+                padding: 8px 0;
             }
 
             .mobile-nav-items {
@@ -144,7 +290,7 @@
                 z-index: 999;
                 display: none;
                 overflow-y: auto;
-                padding-top: 100px; /* Space for top navbar */
+                padding-top: 80px;
             }
 
             .side-nav-header {
@@ -166,17 +312,18 @@
             }
 
             .side-nav-item {
-                margin: 5px 0;
+                margin: 2px 0;
             }
 
             .side-nav-link {
                 display: flex;
                 align-items: center;
-                padding: 12px 20px;
+                padding: 10px 20px;
                 text-decoration: none;
                 color: #333;
                 transition: all 0.3s ease;
                 border-left: 3px solid transparent;
+                font-size: 14px;
             }
 
             .side-nav-link:hover,
@@ -188,8 +335,8 @@
 
             .side-nav-link i {
                 margin-right: 10px;
-                font-size: 18px;
-                width: 24px;
+                font-size: 16px;
+                width: 20px;
                 text-align: center;
             }
 
@@ -205,8 +352,8 @@
             }
 
             .side-nav-dropdown .side-nav-link {
-                padding: 10px 20px 10px 40px;
-                font-size: 14px;
+                padding: 8px 20px 8px 40px;
+                font-size: 13px;
             }
 
             .side-nav-toggle {
@@ -245,7 +392,11 @@
                 }
                 
                 .main-content {
-                    padding-bottom: 70px; /* Space for bottom navbar */
+                    padding-bottom: 70px;
+                }
+
+                .center-shop-container {
+                    flex: 0 1 auto;
                 }
             }
 
@@ -266,11 +417,36 @@
                 }
             }
 
+            /* Top Nav Layout */
+            .top-nav {
+                display: flex;
+                align-items: center;
+                justify-content: space-between;
+                padding: 10px 15px;
+                background: white;
+                box-shadow: 0 2px 10px rgba(0,0,0,0.05);
+                width: 100%;
+            }
+
+            .left-section {
+                display: flex;
+                align-items: center;
+                gap: 15px;
+                flex: 0 0 auto;
+            }
+
+            .right-section {
+                display: flex;
+                align-items: center;
+                gap: 10px;
+                flex: 0 0 auto;
+            }
+
             /* ================== FIXED CARD IMAGE STYLES ================== */
             .custom-card .card-image-wrapper {
                 position: relative;
                 width: 100%;
-                height: 180px; /* Fixed height for consistency */
+                height: 180px;
                 overflow: hidden;
                 display: flex;
                 align-items: center;
@@ -505,6 +681,17 @@
                 50% { box-shadow: 0 0 25px rgba(196, 0, 0, 0.6); }
                 100% { box-shadow: 0 0 0 rgba(196, 0, 0, 0.4); }
             }
+
+            /* Tolleya Shop Badge */
+            .tolleya-shop-badge {
+                font-size: 10px;
+                background: #667eea;
+                color: white;
+                padding: 2px 6px;
+                border-radius: 10px;
+                margin-left: 5px;
+                -webkit-text-fill-color: white;
+            }
         </style>
     </head>
     <body>
@@ -518,6 +705,7 @@
                         Home
                     </a>
                 </li>
+                
                 
                 <li class="side-nav-item">
                     <a href="{% url 'help' %}" class="side-nav-link">
@@ -730,6 +918,16 @@
                                             </div>
                                         </div>
                                 
+                                        <!-- CENTER SHOP LOGO (MIDDLE OF NAVBAR) - External Link to Tolleya.com -->
+                                        <div class="center-shop-container">
+                                            <div class="shop-logo-container">
+                                                <a href="https://tolleya.com" target="_blank" class="shop-logo-link" rel="noopener noreferrer">
+                                                    <img src="{% static 'images/shop-logo.png' %}" alt="Tolleya Shop" class="shop-logo-image" onerror="this.src='https://via.placeholder.com/32x32/667eea/ffffff?text=🛒'">
+                                                    <span class="shop-logo-text">Tolleya Shop <span class="tolleya-shop-badge">External</span></span>
+                                                </a>
+                                            </div>
+                                        </div>
+                                
                                         <!-- Right Section -->
                                         <div class="right-section">
                                             <div class="menu" id="menuButton2">
@@ -768,14 +966,14 @@
                                             <style>
                                                 .search-dropdown {
                                                     position: absolute;
-                                                    top: 100%; /* Position below the search icon */
+                                                    top: 100%;
                                                     left: 0;
                                                     right: 0;
                                                     background: white;
                                                     border: 1px solid #ddd;
                                                     padding: 10px;
                                                     z-index: 1000;
-                                                    display: none; /* Hidden by default */
+                                                    display: none;
                                                 }
                                                 .search-input {
                                                     width: 100%;
@@ -804,7 +1002,6 @@
                                                 const searchDropdown = document.getElementById("searchDropdown");
 
                                                 searchToggle.addEventListener("click", function () {
-                                                    // Toggle visibility
                                                     if (searchDropdown.style.display === "none" || !searchDropdown.style.display) {
                                                         searchDropdown.style.display = "block";
                                                     } else {
@@ -812,7 +1009,6 @@
                                                     }
                                                 });
 
-                                                // Close dropdown when clicking outside
                                                 document.addEventListener("click", function (event) {
                                                     if (!searchDropdown.contains(event.target) && !searchToggle.contains(event.target)) {
                                                         searchDropdown.style.display = "none";
@@ -824,7 +1020,6 @@
                                             <div class="menu">
                                                 <!-- AI Magic Button -->
                                                 <button class="icon-button" title="AI Assistant" id="aiButton">
-                                                    <!-- AI Icon -->
                                                     <svg width="24" height="24" viewBox="0 0 24 24" fill="none" 
                                                         stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                                                         <path d="M12 3v2"></path>
@@ -842,7 +1037,6 @@
                                             </div>
 
                                             <script>
-                                            // Simply show the chat on button click
                                             document.getElementById("aiButton").addEventListener("click", function () {
                                                 window.botpressWebChat.sendEvent({ type: "show" });
                                             });
@@ -3278,7 +3472,7 @@
         </div>
         <!-- End Main Content -->
 
-        <!-- Mobile Bottom Navbar -->
+        <!-- Mobile Bottom Navbar with Shop Logo -->
         <nav class="mobile-bottom-navbar">
             <ul class="mobile-nav-items">
                 <li class="mobile-nav-item">
@@ -3293,6 +3487,13 @@
                         <span class="mobile-nav-text">Help</span>
                     </a>
                 </li>
+                <!-- SHOP IN BOTTOM NAVBAR (with logo) - External Link to Tolleya.com -->
+                <li class="mobile-nav-item">
+                    <a href="https://tolleya.com" target="_blank" class="mobile-shop-logo" rel="noopener noreferrer">
+                        <img src="{% static 'images/shop-logo.png' %}" alt="Tolleya Shop" class="shop-logo-image" onerror="this.src='https://via.placeholder.com/24x24/667eea/ffffff?text=🛒'">
+                        <span class="shop-logo-text">SHOP</span>
+                    </a>
+                </li>
                 <li class="mobile-nav-item">
                     <a href="#searchDropdown" class="mobile-nav-link" onclick="document.getElementById('searchToggle').click();">
                         <i class="icofont icofont-search"></i>
@@ -3303,12 +3504,6 @@
                     <a href="{% url 'college_list' %}" class="mobile-nav-link">
                         <i class="icofont icofont-university"></i>
                         <span class="mobile-nav-text">Colleges</span>
-                    </a>
-                </li>
-                <li class="mobile-nav-item">
-                    <a href="#school-section" class="mobile-nav-link">
-                        <i class="icofont icofont-school-bag"></i>
-                        <span class="mobile-nav-text">School</span>
                     </a>
                 </li>
             </ul>
@@ -3343,7 +3538,7 @@
         <script>
         // Mobile bottom navbar active link highlighting
         document.addEventListener('DOMContentLoaded', function() {
-            const mobileNavLinks = document.querySelectorAll('.mobile-nav-link');
+            const mobileNavLinks = document.querySelectorAll('.mobile-nav-link, .mobile-shop-logo');
             
             // Set active link based on current URL
             const currentUrl = window.location.pathname;
@@ -3357,8 +3552,6 @@
                 } else if (currentUrl.includes('help') && link.getAttribute('href').includes('help')) {
                     link.classList.add('active');
                 } else if (currentUrl.includes('college') && link.getAttribute('href').includes('college')) {
-                    link.classList.add('active');
-                } else if (currentUrl.includes('school') && link.getAttribute('href').includes('school')) {
                     link.classList.add('active');
                 }
             });
@@ -3374,10 +3567,10 @@
             }
             
             // Set home as active if no other match
-            if (!document.querySelector('.mobile-nav-link.active')) {
-                document.querySelector('.mobile-nav-link[href*="index"]').classList.add('active');
+            if (!document.querySelector('.mobile-nav-link.active') && !document.querySelector('.mobile-shop-logo.active')) {
+                const homeLink = document.querySelector('.mobile-nav-link[href*="index"]');
+                if (homeLink) homeLink.classList.add('active');
             }
         });
         </script>
     </body>
-</html>
